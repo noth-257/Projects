@@ -21,6 +21,7 @@ export default function Sidebar() {
     setShowSettings, highlights,
     highlightColors, highlightColorOrder,
     exportAllArticles, importMarkdownFile, selectedFolderId: selFid,
+    dashboardVisible, ensureDashboardVisible,
   } = useStore();
 
   const fileRef = useRef(null);
@@ -30,48 +31,57 @@ export default function Sidebar() {
     e.target.value = '';
   };
 
-  // ── COLLAPSED VIEW ─────────────────────────────────────────
+  // FIX #1: wrapper that also auto-shows dashboard
+  const navTo = (view, extra) => {
+    ensureDashboardVisible();
+    setDashboardView(view);
+    if (extra) extra();
+  };
+
   if (sidebarCollapsed) {
     return (
       <aside className="h-full flex flex-col items-center pt-3 pb-4 border-r"
-        style={{ width: '64px', background: 'var(--sidebar-bg)', borderColor: 'var(--sidebar-border, rgba(255,255,255,0.06))' }}>
-
-        {/* FIX #9: logo toggles sidebar in both directions */}
+        style={{ width: '64px', background: 'var(--sidebar-bg)', borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
         <button onClick={toggleSidebar}
           className="w-10 h-10 rounded-2xl flex items-center justify-center mb-2 hover:opacity-90 transition-all"
           style={{ background: 'linear-gradient(135deg, var(--accent,#5b8dee), var(--accent2,#9b6dff))' }}
           title="Expand sidebar">
           <BookOpen size={18} className="text-white" />
         </button>
-
-        <div className="w-8 my-2" style={{ height: '1px', background: 'var(--sidebar-border, rgba(255,255,255,0.08))' }} />
+        <div className="w-8 my-2" style={{ height: '1px', background: 'var(--sidebar-border,rgba(255,255,255,0.08))' }} />
 
         <CIBtn icon={<BookOpen size={15} />} title="All Articles"
           active={dashboardView === 'articles' && selectedFolderId === null}
-          onClick={() => { setSelectedFolder(null); setDashboardView('articles'); }} />
+          onClick={() => { setSelectedFolder(null); navTo('articles'); }} />
 
-        {/* FIX #4: toggle — second click clears dashboard */}
         <CIBtn icon={<Folder size={15} />} title="Folders"
           active={dashboardView === 'folders'}
-          onClick={() => setDashboardView(dashboardView === 'folders' ? 'articles' : 'folders')} />
+          onClick={() => {
+            if (dashboardView === 'folders' && dashboardVisible) { setDashboardView('articles'); }
+            else navTo('folders');
+          }} />
 
         <CIBtn icon={<Hash size={15} />} title="Tags"
           active={dashboardView === 'tags'}
-          onClick={() => setDashboardView(dashboardView === 'tags' ? 'articles' : 'tags')} />
+          onClick={() => {
+            if (dashboardView === 'tags' && dashboardVisible) { setDashboardView('articles'); }
+            else navTo('tags');
+          }} />
 
         <CIBtn icon={<Highlighter size={15} />} title="Highlights"
           active={dashboardView === 'highlights'}
-          onClick={() => setDashboardView(dashboardView === 'highlights' ? 'articles' : 'highlights')} />
+          onClick={() => {
+            if (dashboardView === 'highlights' && dashboardVisible) { setDashboardView('articles'); }
+            else navTo('highlights');
+          }} />
 
         <div className="flex-1" />
-
         <button onClick={() => useStore.getState().openArticleModal()}
           className="w-10 h-10 rounded-2xl flex items-center justify-center mb-2 text-white hover:scale-105 transition-all"
           style={{ background: 'linear-gradient(135deg, var(--accent,#5b8dee), var(--accent2,#9b6dff))', boxShadow: '0 4px 16px rgba(91,141,238,0.3)' }}
           title="New Article">
           <Plus size={18} />
         </button>
-
         <CIBtn icon={<Settings size={15} />} onClick={() => setShowSettings(true)} title="Settings" />
       </aside>
     );
@@ -79,31 +89,25 @@ export default function Sidebar() {
 
   const rootFolders = getRootFolders();
 
-  // ── EXPANDED VIEW ──────────────────────────────────────────
   return (
     <aside className="h-full flex flex-col border-r"
-      style={{ width: '256px', background: 'var(--sidebar-bg)', borderColor: 'var(--sidebar-border, rgba(255,255,255,0.06))' }}>
+      style={{ width: '256px', background: 'var(--sidebar-bg)', borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
 
-      {/* Header — FIX #9: both logo AND arrow collapse */}
       <div className="px-4 py-4 border-b flex items-center justify-between"
-        style={{ borderColor: 'var(--sidebar-border, rgba(255,255,255,0.06))' }}>
+        style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
         <button onClick={toggleSidebar} className="flex items-center gap-3 group" title="Collapse sidebar">
           <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 transition-opacity group-hover:opacity-80"
             style={{ background: 'linear-gradient(135deg, var(--accent,#5b8dee), var(--accent2,#9b6dff))' }}>
             <BookOpen size={18} className="text-white" />
           </div>
           <div>
-            <h1 className="font-bold leading-none font-display text-base" style={{ color: 'var(--text-primary,#e8eaf6)' }}>
-              ArticleVault
-            </h1>
-            <p className="text-[9px] mt-0.5 font-mono tracking-wider uppercase" style={{ color: 'var(--text-muted,#64748b)' }}>
-              Offline First
-            </p>
+            <h1 className="font-bold leading-none font-display text-base" style={{ color: 'var(--text-primary,#e8eaf6)' }}>ArticleVault</h1>
+            <p className="text-[9px] mt-0.5 font-mono tracking-wider uppercase" style={{ color: 'var(--text-muted,#64748b)' }}>Offline First</p>
           </div>
         </button>
         <button onClick={toggleSidebar}
           className="w-7 h-7 flex items-center justify-center rounded-lg transition-all hover:bg-black/10"
-          style={{ color: 'var(--text-muted,#64748b)' }} title="Collapse sidebar">
+          style={{ color: 'var(--text-muted,#64748b)' }}>
           <PanelLeftClose size={15} />
         </button>
       </div>
@@ -112,15 +116,23 @@ export default function Sidebar() {
         {/* All Articles */}
         <NavItem icon={<BookOpen size={14} />} label="All Articles" count={articles.length}
           active={selectedFolderId === null && dashboardView === 'articles'}
-          onClick={() => { setSelectedFolder(null); setDashboardView('articles'); }} />
+          onClick={() => { setSelectedFolder(null); navTo('articles'); }} />
 
-        {/* FOLDERS — FIX #2: heading click expands list + shows in dashboard; collapse clears dashboard */}
+        {/* FOLDERS */}
         <div className="pt-3">
-          <SecHeader label="Folders" collapsed={foldersCollapsed}
-            onToggle={toggleFoldersSection}
+          <SecHeader label="Folders"
+            collapsed={foldersCollapsed}
+            onToggle={() => { ensureDashboardVisible(); toggleFoldersSection(); }}
             onAdd={() => openFolderModal(null)} />
           {!foldersCollapsed && (
             <div className="mt-1 space-y-0.5">
+              {/* FIX #3: "Add folder" inline button at top of folder list */}
+              <button onClick={() => openFolderModal(null)}
+                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs transition-all"
+                style={{ color: 'var(--text-muted,#64748b)', border: '1px dashed var(--sidebar-border,rgba(255,255,255,0.12))' }}>
+                <Plus size={11} /> New folder
+              </button>
+
               {rootFolders.length === 0
                 ? <p className="text-xs px-3 py-1 italic" style={{ color: 'var(--text-muted,#64748b)' }}>No folders yet</p>
                 : rootFolders.map((f) => (
@@ -129,12 +141,9 @@ export default function Sidebar() {
                     expandedFolders={expandedFolders}
                     getChildFolders={getChildFolders}
                     getArticleCount={getArticleCount}
-                    onSelect={(id) => {
-                      setSelectedFolder(id);
-                      setDashboardView('articles');
-                    }}
+                    onSelect={(id) => { setSelectedFolder(id); navTo('articles'); }}
                     onDrillDashboard={(id) => {
-                      // FIX #3/#4: click folder in sidebar → drill dashboard; click again → clear
+                      ensureDashboardVisible();
                       if (folderDashboardId === id && dashboardView === 'folders') {
                         setDashboardView('articles');
                         useStore.getState().setFolderDashboardId(null);
@@ -154,36 +163,44 @@ export default function Sidebar() {
           )}
         </div>
 
-        {/* TAGS — FIX #4: toggle clears on second click */}
+        {/* TAGS */}
         <div className="pt-3">
-          <SecHeader label="Tags" collapsed={tagsCollapsed} onToggle={toggleTagsSection} />
+          <SecHeader label="Tags" collapsed={tagsCollapsed}
+            onToggle={() => { ensureDashboardVisible(); toggleTagsSection(); }} />
           {!tagsCollapsed && (
             <div className="mt-1">
               <NavItem icon={<Hash size={14} />} label="All Tags"
                 active={dashboardView === 'tags'}
-                onClick={() => setDashboardView(dashboardView === 'tags' ? 'articles' : 'tags')} />
+                onClick={() => {
+                  if (dashboardView === 'tags' && dashboardVisible) setDashboardView('articles');
+                  else navTo('tags');
+                }} />
             </div>
           )}
         </div>
 
-        {/* HIGHLIGHTS — FIX #4: toggle clears on second click */}
+        {/* HIGHLIGHTS */}
         <div className="pt-3">
-          <SecHeader label="Highlights" collapsed={highlightsCollapsed} onToggle={toggleHighlightsSection} />
+          <SecHeader label="Highlights" collapsed={highlightsCollapsed}
+            onToggle={() => { ensureDashboardVisible(); toggleHighlightsSection(); }} />
           {!highlightsCollapsed && (
             <div className="mt-1 space-y-0.5">
               <NavItem icon={<Highlighter size={14} />} label="All Highlights"
                 active={dashboardView === 'highlights'}
-                onClick={() => setDashboardView(dashboardView === 'highlights' ? 'articles' : 'highlights')} />
+                onClick={() => {
+                  if (dashboardView === 'highlights' && dashboardVisible) setDashboardView('articles');
+                  else navTo('highlights');
+                }} />
               {highlightColorOrder.map((cid) => {
                 const c = highlightColors[cid];
                 const count = highlights.filter((h) => h.color === cid).length;
                 if (!count || !c) return null;
                 return (
-                  <div key={cid} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs"
-                    style={{ color: 'var(--text-muted,#64748b)', border: '1px solid transparent' }}>
+                  <div key={cid} className="flex items-center gap-2 px-3 py-1 rounded-lg text-xs"
+                    style={{ color: 'var(--text-muted,#64748b)' }}>
                     <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: c.dot }} />
                     <span className="flex-1 truncate">{c.label}</span>
-                    <span className="font-mono text-[10px]" style={{ color: 'var(--text-muted,#94a3b8)' }}>{count}</span>
+                    <span className="font-mono text-[10px]">{count}</span>
                   </div>
                 );
               })}
@@ -192,15 +209,13 @@ export default function Sidebar() {
         </div>
       </nav>
 
-      {/* Bottom */}
       <div className="px-3 py-3 border-t space-y-0.5"
-        style={{ borderColor: 'var(--sidebar-border, rgba(255,255,255,0.06))' }}>
+        style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
         <NavItem icon={<Download size={14} />} label="Export All" onClick={exportAllArticles} />
         <button onClick={() => fileRef.current?.click()}
           className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm transition-all"
           style={{ color: 'var(--text-muted,#64748b)', border: '1px solid transparent' }}>
-          <Upload size={14} />
-          Import .md
+          <Upload size={14} /> Import .md
         </button>
         <input ref={fileRef} type="file" accept=".md" multiple className="hidden" onChange={handleImport} />
         <NavItem icon={<Settings size={14} />} label="Settings" onClick={() => setShowSettings(true)} />
@@ -216,7 +231,6 @@ function FolderTree({ folder, depth, selectedFolderId, expandedFolders, getChild
   const children = getChildFolders(folder.id);
   const isActive = selectedFolderId === folder.id;
   const isExpanded = !!expandedFolders[folder.id];
-  const isDrilled = folderDashboardId === folder.id;
   const [hovered, setHovered] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameVal, setRenameVal] = useState(folder.name);
@@ -229,46 +243,42 @@ function FolderTree({ folder, depth, selectedFolderId, expandedFolders, getChild
     if (articleId) await useStore.getState().moveArticleToFolder(Number(articleId), folder.id);
   };
 
-  // FIX #10: clicking the folder row expands AND selects; the chevron only expands
   const handleRowClick = () => {
-    onToggle(folder.id);       // expand children
-    onDrillDashboard(folder.id); // update dashboard
-    onSelect(folder.id);       // filter articles
+    onToggle(folder.id);
+    onDrillDashboard(folder.id);
+    onSelect(folder.id);
   };
 
   return (
     <div style={{ paddingLeft: depth * 10 }}>
       <div
         className="flex items-center gap-1 px-2 py-1.5 rounded-xl text-sm transition-all cursor-pointer group"
-        style={{
-          ...(isActive ? {
-            background: 'linear-gradient(135deg, rgba(91,141,238,0.15), rgba(155,109,255,0.15))',
-            border: '1px solid rgba(91,141,238,0.2)',
-          } : { border: '1px solid transparent' }),
-          color: isActive ? 'var(--text-primary,#e8eaf6)' : 'var(--text-muted,#9da4d4)',
-        }}
+        style={isActive ? {
+          background: 'linear-gradient(135deg, rgba(91,141,238,0.15), rgba(155,109,255,0.15))',
+          border: '1px solid rgba(91,141,238,0.2)',
+          color: 'var(--text-primary,#e8eaf6)',
+        } : { border: '1px solid transparent', color: 'var(--text-muted,#9da4d4)' }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         onClick={handleRowClick}
       >
-        {/* FIX #10: chevron always shown, click only toggles expand (stopPropagation prevents double-toggle) */}
+        {/* FIX #6: larger chevron + bigger action buttons */}
         <button
           onClick={(e) => { e.stopPropagation(); onToggle(folder.id); }}
-          className="w-4 h-4 flex items-center justify-center flex-shrink-0 transition-colors"
+          className="w-5 h-5 flex items-center justify-center flex-shrink-0 transition-colors"
           style={{ color: 'var(--text-muted,#64748b)' }}
         >
-          <ChevronRight size={11}
+          <ChevronRight size={13}
             className="transition-transform duration-200"
             style={{ transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)' }} />
         </button>
 
-        {/* Icon + Name */}
         <span className="flex items-center gap-1.5 flex-1 min-w-0">
           {isActive
-            ? <FolderOpen size={13} style={{ color: 'var(--accent,#5b8dee)', flexShrink: 0 }} />
-            : <Folder size={13} style={{ flexShrink: 0, color: 'var(--text-muted,#64748b)' }} />}
+            ? <FolderOpen size={14} style={{ color: 'var(--accent,#5b8dee)', flexShrink: 0 }} />
+            : <Folder size={14} style={{ flexShrink: 0, color: 'var(--text-muted,#64748b)' }} />}
 
           {renaming ? (
             <input autoFocus value={renameVal}
@@ -288,23 +298,26 @@ function FolderTree({ folder, depth, selectedFolderId, expandedFolders, getChild
           )}
         </span>
 
-        {/* Actions */}
-        <div className={`flex items-center gap-0.5 flex-shrink-0 transition-opacity ${hovered ? 'opacity-100' : 'opacity-0'}`}>
+        {/* FIX #6: bigger action icons, visible size */}
+        <div className={`flex items-center gap-1 flex-shrink-0 transition-opacity ${hovered ? 'opacity-100' : 'opacity-0'}`}>
           <button onClick={(e) => { e.stopPropagation(); onAddChild(folder.id); }}
-            className="w-4 h-4 flex items-center justify-center rounded transition-colors hover:text-blue-400"
+            className="w-5 h-5 flex items-center justify-center rounded-md transition-colors hover:text-blue-400"
             style={{ color: 'var(--text-muted,#64748b)' }} title="Add subfolder">
-            <Plus size={9} />
+            <Plus size={12} />
           </button>
           <button onClick={(e) => { e.stopPropagation(); onDelete(folder.id); }}
-            className="w-4 h-4 flex items-center justify-center rounded hover:text-red-400 transition-colors"
+            className="w-5 h-5 flex items-center justify-center rounded-md hover:text-red-400 transition-colors"
             style={{ color: 'var(--text-muted,#64748b)' }}>
-            <Trash2 size={9} />
+            <Trash2 size={12} />
           </button>
         </div>
-        <span className="text-[10px] font-mono flex-shrink-0" style={{ color: 'var(--text-muted,#94a3b8)' }}>{count}</span>
+        {/* FIX #6: bigger counter badge */}
+        <span className="text-xs font-mono flex-shrink-0 px-1.5 py-0.5 rounded-md"
+          style={{ color: 'var(--text-muted,#94a3b8)', background: 'rgba(255,255,255,0.07)', minWidth: '20px', textAlign: 'center' }}>
+          {count}
+        </span>
       </div>
 
-      {/* Children */}
       {isExpanded && children.length > 0 && (
         <div className="mt-0.5">
           {children.map((child) => (
@@ -325,7 +338,7 @@ function SecHeader({ label, collapsed, onToggle, onAdd }) {
   return (
     <div className="flex items-center justify-between px-2 mb-0.5">
       <button onClick={onToggle}
-        className="flex items-center gap-1.5 transition-colors group"
+        className="flex items-center gap-1.5 transition-colors"
         style={{ color: 'var(--text-muted,#64748b)' }}>
         <span className="text-[10px] font-semibold uppercase tracking-widest">{label}</span>
         <ChevronDown size={10} className="transition-transform duration-200"
@@ -349,8 +362,7 @@ function NavItem({ icon, label, count, active, onClick }) {
       style={active ? {
         background: 'linear-gradient(135deg, rgba(91,141,238,0.15), rgba(155,109,255,0.15))',
         border: '1px solid rgba(91,141,238,0.2)',
-        color: 'var(--text-primary,#e8eaf6)',
-        fontWeight: 500,
+        color: 'var(--text-primary,#e8eaf6)', fontWeight: 500,
       } : { border: '1px solid transparent', color: 'var(--text-muted,#9da4d4)' }}>
       <span className="flex items-center gap-2.5">
         <span style={{ color: active ? 'var(--accent,#5b8dee)' : 'var(--text-muted,#64748b)' }}>{icon}</span>

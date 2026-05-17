@@ -25,23 +25,16 @@ const useDataStore = create((set, get) => ({
   folders: [], articles: [], loading: true,
   selectedFolderId: null, selectedArticle: null,
   highlights: [], highlightsLoading: false,
-
   searchQuery: '', filterTag: null, filterDateRange: null, searchScope: 'all',
-
   showFolderModal: false, showArticleModal: false,
   editingArticle: null, parentFolderForNew: null,
-
   sidebarCollapsed: false,
   dashboardVisible: true,
   foldersCollapsed: false, tagsCollapsed: false, highlightsCollapsed: false,
   expandedFolders: {},
-
-  // dashboardView: 'articles' | 'folders' | 'tags' | 'highlights' | 'none'
   dashboardView: 'articles',
-  // folderDashboardId: which folder is currently drilled into in the dashboard
-  // null = show root folders, number = show children of that folder
+  // folderDashboardId: null = root, number = drilled into that folder
   folderDashboardId: null,
-
   showSettings: false,
   theme: 'dark',
   highlightColors: { ...DEFAULT_HIGHLIGHT_COLORS },
@@ -113,8 +106,11 @@ const useDataStore = create((set, get) => ({
     await get().loadArticles();
     if (get().selectedArticle?.id === id) set({ selectedArticle: await db.articles.get(id) });
   },
-  moveArticleToFolder: async (id, folderId) => {
-    await db.articles.update(id, { folderId: folderId ? Number(folderId) : null, updatedAt: new Date() });
+  // FIX #5: moveArticleToFolder — accepts both number and null correctly
+  moveArticleToFolder: async (articleId, folderId) => {
+    const fid = (folderId !== null && folderId !== undefined && folderId !== '')
+      ? Number(folderId) : null;
+    await db.articles.update(Number(articleId), { folderId: fid, updatedAt: new Date() });
     await get().loadArticles();
   },
 
@@ -197,17 +193,17 @@ const useDataStore = create((set, get) => ({
   setFilterTag: (tag) => set({ filterTag: tag }),
   setFilterDateRange: (r) => set({ filterDateRange: r }),
   setSearchScope: (s) => set({ searchScope: s }),
-
   toggleFolderExpand: (id) => set((s) => ({ expandedFolders: { ...s.expandedFolders, [id]: !s.expandedFolders[id] } })),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   toggleDashboard: () => set((s) => ({ dashboardVisible: !s.dashboardVisible })),
 
-  // FIX #2/#4: Folders section toggle — collapse clears dashboard; expand shows folders
+  // FIX #1: any nav action that needs dashboard auto-expands it
+  ensureDashboardVisible: () => { if (!get().dashboardVisible) set({ dashboardVisible: true }); },
+
   toggleFoldersSection: () => set((s) => {
     const nowCollapsed = !s.foldersCollapsed;
     return {
       foldersCollapsed: nowCollapsed,
-      // If collapsing: clear dashboard. If expanding: show folder list
       dashboardView: nowCollapsed ? 'articles' : 'folders',
       folderDashboardId: nowCollapsed ? null : s.folderDashboardId,
     };
@@ -220,9 +216,7 @@ const useDataStore = create((set, get) => ({
     highlightsCollapsed: !s.highlightsCollapsed,
     dashboardView: s.highlightsCollapsed ? 'highlights' : 'articles',
   })),
-
   setDashboardView: (view) => set({ dashboardView: view }),
-  // FIX #3: drill into a folder in the dashboard
   setFolderDashboardId: (id) => set({ folderDashboardId: id, dashboardView: 'folders' }),
 
   setTheme: (t) => { localStorage.setItem('av-theme', t); set({ theme: t }); },
@@ -251,17 +245,32 @@ const useDataStore = create((set, get) => ({
     }
     return [...f].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   },
+  getRecentArticles: (limit = 5) => {
+    return [...get().articles]
+      .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+      .slice(0, limit);
+  },
   getFolderById: (id) => get().folders.find((f) => f.id === id),
   getArticleCount: (folderId) => get().articles.filter((a) => a.folderId === folderId).length,
   getRootFolders: () => get().folders.filter((f) => !f.parentId),
   getChildFolders: (parentId) => get().folders.filter((f) => f.parentId === parentId),
+  // FIX #4: returns array of {id, name} from root down to folderId
+  getFolderAncestors: (folderId) => {
+    if (!folderId) return [];
+    const folders = get().folders;
+    const chain = [];
+    let cur = folders.find((f) => f.id === folderId);
+    while (cur) {
+      chain.unshift({ id: cur.id, name: cur.name });
+      cur = cur.parentId ? folders.find((f) => f.id === cur.parentId) : null;
+    }
+    return chain; // [{id, name}, ...] from root → current
+  },
   getFolderPath: (folderId) => {
     if (!folderId) return null;
-    const folders = get().folders;
-    const parts = [];
-    let cur = folders.find((f) => f.id === folderId);
-    while (cur) { parts.unshift(cur.name); cur = cur.parentId ? folders.find((f) => f.id === cur.parentId) : null; }
-    return parts.length ? ['Folders', ...parts].join(' / ') : null;
+    const ancestors = get().getFolderAncestors(folderId);
+    if (!ancestors.length) return null;
+    return ['Folders', ...ancestors.map((a) => a.name)].join(' / ');
   },
   getAllTags: () => [...new Set(get().articles.flatMap((a) => a.tags || []))].sort(),
 }));
