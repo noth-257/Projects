@@ -173,11 +173,11 @@ export default function ArticleReader() {
                 {selectedArticle.tags.map((tag) => <Tag key={tag} label={tag} />)}
               </div>
             )}
-            <hr style={{ borderColor: 'rgba(255,255,255,0.07)', marginBottom: '2rem' }} />
+            <hr style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.07))', marginBottom: '2rem' }} />
 
             {/* Selectable highlighted text */}
             <div ref={contentRef} className="relative" onMouseUp={handleMouseUp}>
-              <div className="leading-relaxed whitespace-pre-wrap break-words" style={{ fontSize, color: '#c5c9e8', lineHeight: 1.85 }}>
+              <div className="leading-relaxed whitespace-pre-wrap break-words" style={{ fontSize, color: 'var(--text-secondary,#c5c9e8)', lineHeight: 1.85 }}>
                 {segments.length > 0 ? segments.map((seg, i) => {
                   if (!seg.highlight) return <span key={i}>{seg.text}</span>;
                   const c = HIGHLIGHT_COLORS[seg.highlight.color] || HIGHLIGHT_COLORS.yellow;

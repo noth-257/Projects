@@ -1,93 +1,94 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import db from '../db';
 import highlightService from '../services/highlightService';
 
-// Theme presets
 export const THEMES = {
-  dark:   { label: 'Dark',   bg: '#07080d', sidebar: 'rgba(13,15,26,0.97)', accent: '#5b8dee', accent2: '#9b6dff' },
-  darker: { label: 'Abyss',  bg: '#020204', sidebar: 'rgba(5,5,10,0.99)',   accent: '#4a7fd4', accent2: '#7b5ce0' },
-  light:  { label: 'Light',  bg: '#f0f2f8', sidebar: 'rgba(240,242,248,1)', accent: '#3b6fd4', accent2: '#7c3aed' },
-  ocean:  { label: 'Ocean',  bg: '#040d1a', sidebar: 'rgba(4,13,26,0.98)',  accent: '#0ea5e9', accent2: '#06b6d4' },
-  forest: { label: 'Forest', bg: '#040d08', sidebar: 'rgba(4,13,8,0.98)',   accent: '#22c55e', accent2: '#16a34a' },
+  dark:   { label: 'Dark',   bg: '#07080d', sidebar: 'rgba(13,15,26,0.97)', accent: '#5b8dee', accent2: '#9b6dff', isLight: false },
+  darker: { label: 'Abyss',  bg: '#020204', sidebar: 'rgba(5,5,10,0.99)',   accent: '#4a7fd4', accent2: '#7b5ce0', isLight: false },
+  light:  { label: 'Light',  bg: '#f5f6fa', sidebar: 'rgba(248,249,252,0.99)', accent: '#3b6fd4', accent2: '#7c3aed', isLight: true },
+  ocean:  { label: 'Ocean',  bg: '#040d1a', sidebar: 'rgba(4,13,26,0.98)',  accent: '#0ea5e9', accent2: '#06b6d4', isLight: false },
+  forest: { label: 'Forest', bg: '#040d08', sidebar: 'rgba(4,13,8,0.98)',   accent: '#22c55e', accent2: '#16a34a', isLight: false },
 };
 
+export const DEFAULT_HIGHLIGHT_COLORS = {
+  yellow: { id: 'yellow', label: 'Important',   dot: '#fde047', bg: 'rgba(253,224,71,0.35)',  border: 'rgba(253,224,71,0.6)'  },
+  red:    { id: 'red',    label: 'Problems',     dot: '#f87171', bg: 'rgba(248,113,113,0.3)',  border: 'rgba(248,113,113,0.6)' },
+  green:  { id: 'green',  label: 'Definitions',  dot: '#4ade80', bg: 'rgba(74,222,128,0.25)', border: 'rgba(74,222,128,0.5)'  },
+  blue:   { id: 'blue',   label: 'Quotes',       dot: '#60a5fa', bg: 'rgba(96,165,250,0.28)', border: 'rgba(96,165,250,0.55)' },
+  purple: { id: 'purple', label: 'Ideas',        dot: '#a78bfa', bg: 'rgba(167,139,250,0.28)',border: 'rgba(167,139,250,0.55)'},
+  orange: { id: 'orange', label: 'Action items', dot: '#fb923c', bg: 'rgba(251,146,60,0.25)', border: 'rgba(251,146,60,0.5)'  },
+  pink:   { id: 'pink',   label: 'Key terms',    dot: '#f472b6', bg: 'rgba(244,114,182,0.25)',border: 'rgba(244,114,182,0.5)' },
+};
+export const DEFAULT_COLOR_ORDER = ['yellow', 'red', 'green', 'blue', 'purple', 'orange', 'pink'];
+
 const useDataStore = create((set, get) => ({
-  // ── Data ───────────────────────────────────────────────────
   folders: [], articles: [], loading: true,
   selectedFolderId: null, selectedArticle: null,
   highlights: [], highlightsLoading: false,
 
-  // ── Filters ────────────────────────────────────────────────
-  searchQuery: '', filterTag: null, filterDateRange: null,
-  searchScope: 'all', // 'all' | 'title' | 'content' | 'tags'
+  searchQuery: '', filterTag: null, filterDateRange: null, searchScope: 'all',
 
-  // ── Modals ─────────────────────────────────────────────────
   showFolderModal: false, showArticleModal: false,
   editingArticle: null, parentFolderForNew: null,
 
-  // ── UI ─────────────────────────────────────────────────────
-  sidebarCollapsed: false, dashboardVisible: true,
+  sidebarCollapsed: false,
+  dashboardVisible: true,
   foldersCollapsed: false, tagsCollapsed: false, highlightsCollapsed: false,
-  expandedFolders: {}, dashboardView: 'articles',
+  expandedFolders: {},
+
+  // dashboardView: 'articles' | 'folders' | 'tags' | 'highlights' | 'none'
+  dashboardView: 'articles',
+  // folderDashboardId: which folder is currently drilled into in the dashboard
+  // null = show root folders, number = show children of that folder
+  folderDashboardId: null,
+
   showSettings: false,
-
-  // ── Theme (persisted separately via localStorage) ──────────
   theme: 'dark',
+  highlightColors: { ...DEFAULT_HIGHLIGHT_COLORS },
+  highlightColorOrder: [...DEFAULT_COLOR_ORDER],
 
-  // ── Loaders ────────────────────────────────────────────────
-  loadFolders: async () => {
-    const folders = await db.folders.orderBy('createdAt').toArray();
-    set({ folders });
-  },
+  // ── Loaders ───────────────────────────────────────────────
+  loadFolders: async () => { set({ folders: await db.folders.orderBy('createdAt').toArray() }); },
   loadArticles: async () => {
     set({ loading: true });
-    const articles = await db.articles.orderBy('updatedAt').reverse().toArray();
-    set({ articles, loading: false });
+    set({ articles: await db.articles.orderBy('updatedAt').reverse().toArray(), loading: false });
   },
   loadHighlights: async (articleId) => {
     set({ highlightsLoading: true });
-    const highlights = await highlightService.getByArticle(articleId);
-    set({ highlights, highlightsLoading: false });
+    set({ highlights: await highlightService.getByArticle(articleId), highlightsLoading: false });
   },
   init: async () => {
-    // Load theme from localStorage
     const savedTheme = localStorage.getItem('av-theme') || 'dark';
-    set({ theme: savedTheme });
+    const savedColors = (() => { try { return JSON.parse(localStorage.getItem('av-hlcolors') || 'null'); } catch { return null; } })();
+    set({ theme: savedTheme, highlightColors: savedColors || { ...DEFAULT_HIGHLIGHT_COLORS } });
     await get().loadFolders();
     await get().loadArticles();
   },
 
-  // ── Folder CRUD ────────────────────────────────────────────
+  // ── Folders ───────────────────────────────────────────────
   createFolder: async (name, parentId = null) => {
-    const id = await db.folders.add({ name, parentId, createdAt: new Date(), updatedAt: new Date() });
+    await db.folders.add({ name, parentId, createdAt: new Date(), updatedAt: new Date() });
     await get().loadFolders();
-    return id;
   },
   deleteFolder: async (id) => {
-    // Delete subfolders recursively
     const children = get().folders.filter((f) => f.parentId === id);
-    for (const child of children) await get().deleteFolder(child.id);
+    for (const c of children) await get().deleteFolder(c.id);
     await db.folders.delete(id);
     await db.articles.where('folderId').equals(id).modify({ folderId: null });
     if (get().selectedFolderId === id) set({ selectedFolderId: null });
-    await get().loadFolders();
-    await get().loadArticles();
+    if (get().folderDashboardId === id) set({ folderDashboardId: null });
+    await get().loadFolders(); await get().loadArticles();
   },
   renameFolder: async (id, name) => {
     await db.folders.update(id, { name, updatedAt: new Date() });
     await get().loadFolders();
   },
 
-  // ── Article CRUD ───────────────────────────────────────────
+  // ── Articles ──────────────────────────────────────────────
   createArticle: async (data) => {
     const folderId = data.folderId ? Number(data.folderId) : null;
-    const id = await db.articles.add({
-      ...data, folderId, tags: data.tags || [], pinned: false,
-      createdAt: new Date(), updatedAt: new Date(),
-    });
+    await db.articles.add({ ...data, folderId, tags: data.tags || [], pinned: false, createdAt: new Date(), updatedAt: new Date() });
     await get().loadArticles();
-    return id;
   },
   updateArticle: async (id, data) => {
     const folderId = data.folderId ? Number(data.folderId) : null;
@@ -113,12 +114,11 @@ const useDataStore = create((set, get) => ({
     if (get().selectedArticle?.id === id) set({ selectedArticle: await db.articles.get(id) });
   },
   moveArticleToFolder: async (id, folderId) => {
-    const fid = folderId ? Number(folderId) : null;
-    await db.articles.update(id, { folderId: fid, updatedAt: new Date() });
+    await db.articles.update(id, { folderId: folderId ? Number(folderId) : null, updatedAt: new Date() });
     await get().loadArticles();
   },
 
-  // ── Highlight CRUD ─────────────────────────────────────────
+  // ── Highlights ────────────────────────────────────────────
   createHighlight: async (payload) => {
     const h = await highlightService.create(payload);
     set((s) => ({ highlights: [...s.highlights, h].sort((a, b) => a.startOffset - b.startOffset) }));
@@ -132,60 +132,62 @@ const useDataStore = create((set, get) => ({
     await highlightService.delete(id);
     set((s) => ({ highlights: s.highlights.filter((h) => h.id !== id) }));
   },
+  renameHighlightColor: (colorId, newLabel) => {
+    set((s) => {
+      const updated = { ...s.highlightColors, [colorId]: { ...s.highlightColors[colorId], label: newLabel } };
+      localStorage.setItem('av-hlcolors', JSON.stringify(updated));
+      return { highlightColors: updated };
+    });
+  },
+  addHighlightColor: (id, label, dot) => {
+    const bg = dot + '40', border = dot + '99';
+    set((s) => {
+      const updated = { ...s.highlightColors, [id]: { id, label, dot, bg, border } };
+      const order = [...s.highlightColorOrder, id];
+      localStorage.setItem('av-hlcolors', JSON.stringify(updated));
+      return { highlightColors: updated, highlightColorOrder: order };
+    });
+  },
+  removeHighlightColor: (colorId) => {
+    set((s) => {
+      const updated = { ...s.highlightColors };
+      delete updated[colorId];
+      const order = s.highlightColorOrder.filter((c) => c !== colorId);
+      localStorage.setItem('av-hlcolors', JSON.stringify(updated));
+      return { highlightColors: updated, highlightColorOrder: order };
+    });
+  },
 
-  // ── Import / Export ────────────────────────────────────────
+  // ── Import / Export ───────────────────────────────────────
   exportArticle: (article) => {
     const folder = get().folders.find((f) => f.id === article.folderId);
-    const meta = [
-      '---',
-      `title: ${article.title}`,
-      `folder: ${folder?.name || ''}`,
-      `tags: [${(article.tags || []).join(', ')}]`,
-      `created: ${new Date(article.createdAt).toISOString()}`,
-      `updated: ${new Date(article.updatedAt).toISOString()}`,
-      '---',
-      '',
-    ].join('\n');
+    const meta = `---\ntitle: ${article.title}\nfolder: ${folder?.name || ''}\ntags: [${(article.tags||[]).join(', ')}]\ncreated: ${new Date(article.createdAt).toISOString()}\n---\n\n`;
     const blob = new Blob([meta + article.content], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${article.title.replace(/[^a-z0-9]/gi, '_')}.md`;
-    a.click();
+    const a = document.createElement('a'); a.href = url; a.download = `${article.title.replace(/[^a-z0-9]/gi,'_')}.md`; a.click();
     URL.revokeObjectURL(url);
   },
   exportAllArticles: async () => {
     const articles = await db.articles.toArray();
     const folders = get().folders;
-    const lines = articles.map((a) => {
-      const f = folders.find((x) => x.id === a.folderId);
-      return `# ${a.title}\n_Folder: ${f?.name || 'None'} | Tags: ${(a.tags||[]).join(', ')}_\n\n${a.content}\n\n---\n`;
-    });
-    const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+    const blob = new Blob([articles.map((a) => { const f = folders.find((x) => x.id === a.folderId); return `# ${a.title}\n_${f?.name || 'None'}_\n\n${a.content}\n\n---\n`; }).join('\n')], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'ArticleVault_export.md'; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = 'ArticleVault_export.md'; a.click();
     URL.revokeObjectURL(url);
   },
   importMarkdownFile: async (file, folderId = null) => {
     const text = await file.text();
-    // Parse optional frontmatter
-    let title = file.name.replace(/\.md$/i, '');
-    let content = text;
-    let tags = [];
+    let title = file.name.replace(/\.md$/i, ''), content = text, tags = [];
     const fm = text.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
     if (fm) {
-      const meta = fm[1];
-      content = fm[2].trim();
-      const t = meta.match(/^title:\s*(.+)$/m);
-      const tg = meta.match(/^tags:\s*\[([^\]]*)\]/m);
-      if (t) title = t[1].trim();
-      if (tg) tags = tg[1].split(',').map((s) => s.trim()).filter(Boolean);
+      const meta = fm[1]; content = fm[2].trim();
+      const t = meta.match(/^title:\s*(.+)$/m); const tg = meta.match(/^tags:\s*\[([^\]]*)\]/m);
+      if (t) title = t[1].trim(); if (tg) tags = tg[1].split(',').map((s) => s.trim()).filter(Boolean);
     }
     await get().createArticle({ title, content, folderId, tags });
   },
 
-  // ── UI actions ─────────────────────────────────────────────
+  // ── UI ────────────────────────────────────────────────────
   setSelectedFolder: (id) => set({ selectedFolderId: id, selectedArticle: null, highlights: [] }),
   setSelectedArticle: async (article) => {
     set({ selectedArticle: article, highlights: [] });
@@ -193,41 +195,61 @@ const useDataStore = create((set, get) => ({
   },
   setSearchQuery: (q) => set({ searchQuery: q }),
   setFilterTag: (tag) => set({ filterTag: tag }),
-  setFilterDateRange: (range) => set({ filterDateRange: range }),
-  setSearchScope: (scope) => set({ searchScope: scope }),
+  setFilterDateRange: (r) => set({ filterDateRange: r }),
+  setSearchScope: (s) => set({ searchScope: s }),
+
   toggleFolderExpand: (id) => set((s) => ({ expandedFolders: { ...s.expandedFolders, [id]: !s.expandedFolders[id] } })),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   toggleDashboard: () => set((s) => ({ dashboardVisible: !s.dashboardVisible })),
-  toggleFoldersSection: () => set((s) => ({ foldersCollapsed: !s.foldersCollapsed })),
-  toggleTagsSection: () => set((s) => ({ tagsCollapsed: !s.tagsCollapsed })),
-  toggleHighlightsSection: () => set((s) => ({ highlightsCollapsed: !s.highlightsCollapsed })),
-  setDashboardView: (view) => set({ dashboardView: view }),
-  setTheme: (theme) => { localStorage.setItem('av-theme', theme); set({ theme }); },
-  setShowSettings: (v) => set({ showSettings: v }),
 
+  // FIX #2/#4: Folders section toggle — collapse clears dashboard; expand shows folders
+  toggleFoldersSection: () => set((s) => {
+    const nowCollapsed = !s.foldersCollapsed;
+    return {
+      foldersCollapsed: nowCollapsed,
+      // If collapsing: clear dashboard. If expanding: show folder list
+      dashboardView: nowCollapsed ? 'articles' : 'folders',
+      folderDashboardId: nowCollapsed ? null : s.folderDashboardId,
+    };
+  }),
+  toggleTagsSection: () => set((s) => ({
+    tagsCollapsed: !s.tagsCollapsed,
+    dashboardView: s.tagsCollapsed ? 'tags' : 'articles',
+  })),
+  toggleHighlightsSection: () => set((s) => ({
+    highlightsCollapsed: !s.highlightsCollapsed,
+    dashboardView: s.highlightsCollapsed ? 'highlights' : 'articles',
+  })),
+
+  setDashboardView: (view) => set({ dashboardView: view }),
+  // FIX #3: drill into a folder in the dashboard
+  setFolderDashboardId: (id) => set({ folderDashboardId: id, dashboardView: 'folders' }),
+
+  setTheme: (t) => { localStorage.setItem('av-theme', t); set({ theme: t }); },
+  setShowSettings: (v) => set({ showSettings: v }),
   openFolderModal: (parentId = null) => set({ showFolderModal: true, parentFolderForNew: parentId }),
   closeFolderModal: () => set({ showFolderModal: false, parentFolderForNew: null }),
   openArticleModal: (article = null) => set({ showArticleModal: true, editingArticle: article }),
   closeArticleModal: () => set({ showArticleModal: false, editingArticle: null }),
 
-  // ── Computed ───────────────────────────────────────────────
+  // ── Computed ──────────────────────────────────────────────
   getFilteredArticles: () => {
     const { articles, selectedFolderId, searchQuery, filterTag, filterDateRange, searchScope } = get();
-    let filtered = articles;
-    if (selectedFolderId !== null) filtered = filtered.filter((a) => a.folderId === selectedFolderId);
-    if (filterTag) filtered = filtered.filter((a) => a.tags?.includes(filterTag));
-    if (filterDateRange?.from) filtered = filtered.filter((a) => new Date(a.createdAt) >= filterDateRange.from);
-    if (filterDateRange?.to) filtered = filtered.filter((a) => new Date(a.createdAt) <= filterDateRange.to);
+    let f = articles;
+    if (selectedFolderId !== null) f = f.filter((a) => a.folderId === selectedFolderId);
+    if (filterTag) f = f.filter((a) => a.tags?.includes(filterTag));
+    if (filterDateRange?.from) f = f.filter((a) => new Date(a.createdAt) >= filterDateRange.from);
+    if (filterDateRange?.to) f = f.filter((a) => new Date(a.createdAt) <= filterDateRange.to);
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      filtered = filtered.filter((a) => {
+      f = f.filter((a) => {
         if (searchScope === 'title') return a.title.toLowerCase().includes(q);
         if (searchScope === 'tags') return a.tags?.some((t) => t.toLowerCase().includes(q));
         if (searchScope === 'content') return a.content?.toLowerCase().includes(q);
         return a.title.toLowerCase().includes(q) || a.content?.toLowerCase().includes(q) || a.tags?.some((t) => t.toLowerCase().includes(q));
       });
     }
-    return [...filtered].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
+    return [...f].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   },
   getFolderById: (id) => get().folders.find((f) => f.id === id),
   getArticleCount: (folderId) => get().articles.filter((a) => a.folderId === folderId).length,
@@ -237,17 +259,11 @@ const useDataStore = create((set, get) => ({
     if (!folderId) return null;
     const folders = get().folders;
     const parts = [];
-    let current = folders.find((f) => f.id === folderId);
-    while (current) {
-      parts.unshift(current.name);
-      current = current.parentId ? folders.find((f) => f.id === current.parentId) : null;
-    }
+    let cur = folders.find((f) => f.id === folderId);
+    while (cur) { parts.unshift(cur.name); cur = cur.parentId ? folders.find((f) => f.id === cur.parentId) : null; }
     return parts.length ? ['Folders', ...parts].join(' / ') : null;
   },
-  getAllTags: () => {
-    const tagSet = new Set(get().articles.flatMap((a) => a.tags || []));
-    return [...tagSet].sort();
-  },
+  getAllTags: () => [...new Set(get().articles.flatMap((a) => a.tags || []))].sort(),
 }));
 
 export const useStore = useDataStore;
