@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Search, FileText, Folder, ChevronRight, X,
-  SlidersHorizontal, Plus, Pencil, Trash2, Clock, Home,
+  SlidersHorizontal, Plus, Pencil, Trash2, Clock,
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import ArticleCard from './ArticleCard';
@@ -12,7 +12,7 @@ import { formatDate } from '../../utils/helpers';
 export default function ArticleList() {
   const {
     dashboardVisible, dashboardMode, setDashboardMode,
-    currentFolderId, navigateToFolder,
+    currentFolderId, browseFolder, openFolderArticles, goToRoot,
     getFolderById, getFolderAncestors, getChildFolders, getArticleCount,
     getCurrentSubfolders, getCurrentArticles, getRecentArticles, getSearchResults,
     openArticleModal, openFolderModal, sidebarCollapsed,
@@ -31,19 +31,19 @@ export default function ArticleList() {
 
   if (!dashboardVisible) return null;
 
-  // ── TAGS panel ─────────────────────────────────────────────
+  // ── TAGS ───────────────────────────────────────────────────
   if (dashboardMode === 'tags') {
     const tags = getAllTags();
     return (
       <div className="flex flex-col h-full border-r" style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
-        <PanelHeader title="Tags" count={tags.length} onBack={() => setDashboardMode('explorer')} />
+        <PanelHeader title="Tags" count={tags.length} onBack={() => setDashboardMode('folders')} />
         <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4">
           {tags.length === 0
             ? <EmptyState icon="🏷️" message="No tags yet" hint="Add tags when creating articles" />
             : <div className="flex flex-wrap gap-2">
               {tags.map((tag) => (
                 <button key={tag}
-                  onClick={() => { setFilterTag(filterTag === tag ? null : tag); setDashboardMode('explorer'); }}
+                  onClick={() => { setFilterTag(filterTag === tag ? null : tag); setDashboardMode('articles'); }}
                   className="px-3 py-1.5 rounded-full text-xs font-medium transition-all border"
                   style={{
                     background: filterTag === tag ? 'rgba(91,141,238,0.2)' : 'rgba(255,255,255,0.06)',
@@ -60,7 +60,7 @@ export default function ArticleList() {
     );
   }
 
-  // ── HIGHLIGHTS panel ───────────────────────────────────────
+  // ── HIGHLIGHTS ─────────────────────────────────────────────
   if (dashboardMode === 'highlights') {
     return (
       <HighlightsPanel
@@ -68,19 +68,99 @@ export default function ArticleList() {
         highlightColorOrder={highlightColorOrder} deleteHighlight={deleteHighlight}
         updateHighlightColor={updateHighlightColor} renameHighlightColor={renameHighlightColor}
         addHighlightColor={addHighlightColor} removeHighlightColor={removeHighlightColor}
-        onBack={() => setDashboardMode('explorer')}
+        onBack={() => setDashboardMode('folders')}
       />
     );
   }
 
-  // ── UNIFIED EXPLORER ───────────────────────────────────────
+  // ── FOLDERS: show subfolders of currentFolderId ────────────
+  if (dashboardMode === 'folders') {
+    const subfolders = getCurrentSubfolders();
+    const currentFolder = currentFolderId ? getFolderById(currentFolderId) : null;
+    const ancestors = currentFolderId ? getFolderAncestors(currentFolderId) : [];
+
+    return (
+      <div className="flex flex-col h-full border-r" style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
+        <div className="px-4 pt-5 pb-4 border-b" style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
+
+          {/* Breadcrumb — FIX #3: "All" → root folder list, ancestors → browse that folder */}
+          <div className="flex items-center gap-1 text-[10px] font-mono mb-2 flex-wrap"
+            style={{ color: 'var(--text-muted,#64748b)', minHeight: '16px' }}>
+            <button
+              className="hover:underline transition-colors"
+              style={{ color: ancestors.length === 0 ? 'var(--accent,#5b8dee)' : 'var(--text-muted,#64748b)' }}
+              onClick={() => goToRoot()}>   {/* FIX #3 */}
+              Folders
+            </button>
+            {ancestors.map((anc, i) => (
+              <span key={anc.id} className="flex items-center gap-1">
+                <ChevronRight size={9} />
+                <button
+                  className="hover:underline transition-colors"
+                  style={{ color: i === ancestors.length - 1 ? 'var(--accent,#5b8dee)' : 'var(--text-muted,#64748b)' }}
+                  onClick={() => browseFolder(anc.id)}>
+                  {anc.name}
+                </button>
+              </span>
+            ))}
+          </div>
+
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-base font-display" style={{ color: 'var(--text-primary,#e8eaf6)' }}>
+              {currentFolder ? currentFolder.name : 'Folders'}
+            </h2>
+            <span className="text-xs font-mono px-2 py-1 rounded-lg"
+              style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted,#9da4d4)' }}>
+              {subfolders.length}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 space-y-2">
+          {subfolders.length === 0 && (
+            <EmptyState icon="📁" message="No folders here"
+              hint={currentFolderId ? 'Add a subfolder below' : 'Create your first folder below'} />
+          )}
+
+          {subfolders.map((f) => {
+            const children = getChildFolders(f.id);
+            const ancs = getFolderAncestors(f.id);
+            const path = ['Folders', ...ancs.map((a) => a.name)].join(' / ');
+            return (
+              <FolderRow key={f.id}
+                folder={f}
+                articleCount={getArticleCount(f.id)}
+                childCount={children.length}
+                path={path}
+                onBrowse={() => browseFolder(f.id)}       // drill into subfolders
+                onOpenArticles={() => openFolderArticles(f.id)} // view articles
+              />
+            );
+          })}
+
+          {/* Add folder button always visible in folders view */}
+          <button onClick={() => openFolderModal(currentFolderId)}
+            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs transition-all"
+            style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px dashed var(--sidebar-border,rgba(255,255,255,0.12))',
+              color: 'var(--text-muted,#9da4d4)',
+            }}>
+            <Plus size={12} />
+            {currentFolderId ? `New subfolder in "${currentFolder?.name}"` : 'New folder'}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── ARTICLES: show articles inside currentFolderId ─────────
   const currentFolder = currentFolderId ? getFolderById(currentFolderId) : null;
   const ancestors = currentFolderId ? getFolderAncestors(currentFolderId) : [];
-  const subfolders = getCurrentSubfolders();
-  const localArticles = getCurrentArticles();
   const isSearching = !!(searchQuery.trim() || filterTag || filterDateRange?.from);
   const searchResults = isSearching ? getSearchResults() : [];
-  const recentArticles = !currentFolderId && !isSearching ? getRecentArticles(5) : [];
+  const localArticles = getCurrentArticles();
+  const recentArticles = !isSearching ? getRecentArticles(5) : [];
   const activeFilters = !!(filterTag || filterDateRange?.from || filterDateRange?.to || searchScope !== 'all');
 
   const applyDateFilter = () => setFilterDateRange({
@@ -95,18 +175,16 @@ export default function ArticleList() {
 
   return (
     <div className="flex flex-col h-full border-r" style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
-
-      {/* Header */}
       <div className="px-4 pt-5 pb-4 border-b" style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
 
-        {/* Breadcrumb */}
+        {/* Breadcrumb — FIX #3: "Folders" root → browseFolder(null), ancestors → browseFolder(id) */}
         <div className="flex items-center gap-1 text-[10px] font-mono mb-2 flex-wrap"
           style={{ color: 'var(--text-muted,#64748b)', minHeight: '16px' }}>
           <button
-            className="flex items-center gap-1 hover:underline transition-colors"
-            style={{ color: ancestors.length === 0 ? 'var(--accent,#5b8dee)' : 'var(--text-muted,#64748b)' }}
-            onClick={() => navigateToFolder(null)}>
-            <Home size={9} /> All
+            className="hover:underline transition-colors"
+            style={{ color: 'var(--text-muted,#64748b)' }}
+            onClick={() => goToRoot()}>
+            Folders
           </button>
           {ancestors.map((anc, i) => (
             <span key={anc.id} className="flex items-center gap-1">
@@ -114,14 +192,13 @@ export default function ArticleList() {
               <button
                 className="hover:underline transition-colors"
                 style={{ color: i === ancestors.length - 1 ? 'var(--accent,#5b8dee)' : 'var(--text-muted,#64748b)' }}
-                onClick={() => navigateToFolder(anc.id)}>
+                onClick={() => browseFolder(anc.id)}>
                 {anc.name}
               </button>
             </span>
           ))}
         </div>
 
-        {/* Title */}
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-bold text-base font-display" style={{ color: 'var(--text-primary,#e8eaf6)' }}>
             {currentFolder ? currentFolder.name : 'All Articles'}
@@ -136,12 +213,12 @@ export default function ArticleList() {
             )}
             <span className="text-xs font-mono px-2 py-1 rounded-lg"
               style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted,#9da4d4)' }}>
-              {isSearching ? searchResults.length : subfolders.length + localArticles.length}
+              {isSearching ? searchResults.length : localArticles.length}
             </span>
           </div>
         </div>
 
-        {/* New Article */}
+        {/* New Article button */}
         {!sidebarCollapsed && (
           <Button variant="primary" size="sm" className="w-full mb-3 justify-center"
             icon={<FileText size={13} />} onClick={() => openArticleModal()}>
@@ -205,7 +282,7 @@ export default function ArticleList() {
         )}
       </div>
 
-      {/* Content */}
+      {/* Articles */}
       <div className="flex-1 overflow-y-auto scrollbar-thin px-4 py-4 space-y-2">
         {loading ? (
           Array.from({ length: 3 }).map((_, i) => <ArticleCardSkeleton key={i} />)
@@ -218,55 +295,22 @@ export default function ArticleList() {
             </>
         ) : (
           <>
-            {/* Recent strip — root only */}
-            {recentArticles.length > 0 && (
-              <div className="mb-1">
+            {/* Recent strip — only at root with no filters */}
+            {recentArticles.length > 0 && !currentFolderId && (
+              <div className="mb-2">
                 <SectionLabel label="Recent" icon={<Clock size={10} />} />
                 {recentArticles.map((a) => (
                   <RecentRow key={a.id} article={a}
                     folder={a.folderId ? getFolderById(a.folderId) : null}
                     onClick={() => setSelectedArticle(a)} />
                 ))}
-                <div className="mt-3"><SectionLabel label="Contents" /></div>
+                {localArticles.length > 0 && <div className="mt-3"><SectionLabel label="All Articles" /></div>}
               </div>
             )}
 
-            {/* Subfolders */}
-            {subfolders.map((f) => (
-              <FolderRow key={f.id} folder={f}
-                articleCount={getArticleCount(f.id)}
-                childCount={getChildFolders(f.id).length}
-                ancestors={getFolderAncestors(f.id)}
-                onClick={() => navigateToFolder(f.id)} />
-            ))}
-
-            {/* Add subfolder/folder button */}
-            {currentFolderId ? (
-              <button onClick={() => openFolderModal(currentFolderId)}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs transition-all"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px dashed var(--sidebar-border,rgba(255,255,255,0.1))', color: 'var(--text-muted,#9da4d4)' }}>
-                <Plus size={11} /> New subfolder in "{currentFolder?.name}"
-              </button>
-            ) : (
-              <button onClick={() => openFolderModal(null)}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs transition-all"
-                style={{ background: 'rgba(255,255,255,0.03)', border: '1px dashed var(--sidebar-border,rgba(255,255,255,0.1))', color: 'var(--text-muted,#9da4d4)' }}>
-                <Plus size={11} /> New folder
-              </button>
+            {localArticles.length === 0 && (
+              <EmptyState icon="📄" message="No articles here" hint="Create one with the button above" />
             )}
-
-            {/* Articles divider */}
-            {localArticles.length > 0 && subfolders.length > 0 && (
-              <div className="pt-1"><SectionLabel label="Articles here" /></div>
-            )}
-
-            {/* Empty state */}
-            {localArticles.length === 0 && subfolders.length === 0 && (
-              <EmptyState icon="📄" message="Nothing here yet"
-                hint={currentFolderId ? 'Create an article or subfolder' : 'Create a folder or article to get started'} />
-            )}
-
-            {/* Articles */}
             {localArticles.map((a) => <ArticleCard key={a.id} article={a} />)}
           </>
         )}
@@ -275,39 +319,56 @@ export default function ArticleList() {
   );
 }
 
-// ── Reusable sub-components ────────────────────────────────────
+// ── Sub-components ─────────────────────────────────────────────
 
 function SectionLabel({ label, icon }) {
   return (
-    <div className="flex items-center gap-1.5 px-1 py-0.5">
+    <div className="flex items-center gap-1.5 px-1 py-0.5 mb-1">
       {icon && <span style={{ color: 'var(--text-muted,#64748b)' }}>{icon}</span>}
       <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted,#64748b)' }}>{label}</span>
     </div>
   );
 }
 
-function FolderRow({ folder, articleCount, childCount, ancestors, onClick }) {
-  const path = ['All', ...ancestors.map((a) => a.name)].join(' / ');
+/**
+ * FolderRow — clicking the main area browses into subfolders,
+ * clicking the article count opens the folder's articles
+ */
+function FolderRow({ folder, articleCount, childCount, path, onBrowse, onOpenArticles }) {
   return (
-    <button onClick={onClick}
-      className="w-full text-left p-3.5 rounded-2xl transition-all flex items-center gap-3"
+    <div className="flex items-center gap-3 p-3.5 rounded-2xl transition-all group"
       style={{ background: 'var(--card-bg,rgba(255,255,255,0.04))', border: '1px solid var(--card-border,rgba(255,255,255,0.07))' }}
       onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.07)'}
       onMouseLeave={(e) => e.currentTarget.style.background = 'var(--card-bg,rgba(255,255,255,0.04))'}>
-      <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+
+      {/* Icon */}
+      <button onClick={onBrowse} className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
         style={{ background: 'rgba(91,141,238,0.12)', border: '1px solid rgba(91,141,238,0.2)' }}>
         <Folder size={14} style={{ color: 'var(--accent,#5b8dee)' }} />
-      </div>
-      <div className="flex-1 min-w-0">
+      </button>
+
+      {/* Name + path */}
+      <button onClick={onBrowse} className="flex-1 min-w-0 text-left">
         <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary,#e8eaf6)' }}>{folder.name}</p>
         <p className="text-[10px] font-mono mt-0.5 truncate" style={{ color: 'var(--text-muted,#64748b)' }}>{path}</p>
-      </div>
-      <div className="flex items-center gap-2 flex-shrink-0">
-        <span className="text-xs font-mono px-1.5 py-0.5 rounded-md"
-          style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted,#9da4d4)' }}>{articleCount}</span>
-        {childCount > 0 && <ChevronRight size={12} style={{ color: 'var(--text-muted,#64748b)' }} />}
-      </div>
-    </button>
+      </button>
+
+      {/* Article count — clicking opens articles */}
+      <button onClick={onOpenArticles}
+        className="flex items-center gap-1.5 px-2 py-1 rounded-lg transition-all flex-shrink-0 hover:opacity-80"
+        style={{ background: 'rgba(255,255,255,0.06)' }}
+        title="View articles">
+        <span className="text-xs font-mono" style={{ color: 'var(--text-muted,#9da4d4)' }}>{articleCount}</span>
+        <FileText size={10} style={{ color: 'var(--text-muted,#64748b)' }} />
+      </button>
+
+      {/* Chevron — browse into subfolders */}
+      {childCount > 0 && (
+        <button onClick={onBrowse} className="flex-shrink-0">
+          <ChevronRight size={13} style={{ color: 'var(--text-muted,#64748b)' }} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -342,7 +403,7 @@ function PanelHeader({ title, count, onBack }) {
           style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted,#9da4d4)' }}>{count}</span>
         {onBack && (
           <button onClick={onBack}
-            className="w-7 h-7 flex items-center justify-center rounded-lg transition-all hover:bg-black/10"
+            className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-black/10 transition-all"
             style={{ color: 'var(--text-muted,#64748b)' }}>
             <X size={14} />
           </button>

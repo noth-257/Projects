@@ -38,21 +38,20 @@ const useDataStore = create((set, get) => ({
   highlightColorOrder: [...DEFAULT_COLOR_ORDER],
 
   /**
-   * UNIFIED NAVIGATION STATE
-   * ─────────────────────────
-   * dashboardMode: 'explorer' | 'tags' | 'highlights'
-   *   - 'explorer' = the single unified folder+article view (replaces both 'articles' and 'folders')
-   *   - 'tags'     = tags panel
-   *   - 'highlights' = highlights panel
+   * NAVIGATION MODEL
+   * ────────────────
+   * dashboardMode: 'folders' | 'articles' | 'tags' | 'highlights'
+   *   'folders'  = browsing the folder tree (shows subfolders of currentFolderId)
+   *   'articles' = viewing articles inside currentFolderId
+   *   'tags'     = tags panel
+   *   'highlights' = highlights panel
    *
    * currentFolderId: null | number
-   *   - null  = root (shows all root folders + unfoldered articles)
-   *   - id    = inside that folder (shows its subfolders + its articles)
-   *
-   * selectedArticle stays separate (opens in reader)
+   *   The folder we are currently "inside". null = root level.
+   *   Both folder-browsing and article-listing use the same currentFolderId.
    */
-  dashboardMode: 'explorer',
-  currentFolderId: null,   // single source of truth for "where am I"
+  dashboardMode: 'folders',  // start in folders view
+  currentFolderId: null,
 
   // ── Loaders ───────────────────────────────────────────────
   loadFolders: async () => { set({ folders: await db.folders.orderBy('createdAt').toArray() }); },
@@ -82,10 +81,9 @@ const useDataStore = create((set, get) => ({
     for (const c of children) await get().deleteFolder(c.id);
     await db.folders.delete(id);
     await db.articles.where('folderId').equals(id).modify({ folderId: null });
-    // If we were inside the deleted folder, go up to parent
     if (get().currentFolderId === id) {
       const folder = get().folders.find((f) => f.id === id);
-      set({ currentFolderId: folder?.parentId ?? null });
+      set({ currentFolderId: folder?.parentId ?? null, dashboardMode: 'folders' });
     }
     await get().loadFolders(); await get().loadArticles();
   },
@@ -198,23 +196,34 @@ const useDataStore = create((set, get) => ({
     await get().createArticle({ title, content, folderId, tags });
   },
 
-  // ── Navigation (unified) ──────────────────────────────────
+  // ── Navigation ────────────────────────────────────────────
   /**
-   * Navigate to a folder in the explorer.
-   * Always switches to explorer mode and sets currentFolderId.
+   * Browse into a folder — shows its subfolders (folders mode)
    */
-  navigateToFolder: (folderId) => {
+  browseFolder: (folderId) => {
     if (!get().dashboardVisible) set({ dashboardVisible: true });
-    set({ dashboardMode: 'explorer', currentFolderId: folderId ?? null, selectedArticle: null, highlights: [] });
+    set({ dashboardMode: 'folders', currentFolderId: folderId ?? null });
   },
   /**
-   * Navigate up one level (to parent folder).
+   * Open a folder's articles
    */
-  navigateUp: () => {
-    const { currentFolderId, folders } = get();
-    if (currentFolderId === null) return;
-    const current = folders.find((f) => f.id === currentFolderId);
-    set({ currentFolderId: current?.parentId ?? null });
+  openFolderArticles: (folderId) => {
+    if (!get().dashboardVisible) set({ dashboardVisible: true });
+    set({ dashboardMode: 'articles', currentFolderId: folderId ?? null, selectedArticle: null, highlights: [] });
+  },
+  /**
+   * "All" in breadcrumb → go back to root folder list
+   */
+  goToRoot: () => {
+    if (!get().dashboardVisible) set({ dashboardVisible: true });
+    set({ dashboardMode: 'folders', currentFolderId: null });
+  },
+  /**
+   * Sidebar "Folders" heading click → show root folder list
+   */
+  showFolderBrowser: () => {
+    if (!get().dashboardVisible) set({ dashboardVisible: true });
+    set({ dashboardMode: 'folders', currentFolderId: null });
   },
 
   setSelectedArticle: async (article) => {
@@ -225,22 +234,17 @@ const useDataStore = create((set, get) => ({
   setFilterTag: (tag) => set({ filterTag: tag }),
   setFilterDateRange: (r) => set({ filterDateRange: r }),
   setSearchScope: (s) => set({ searchScope: s }),
-
   toggleFolderExpand: (id) => set((s) => ({ expandedFolders: { ...s.expandedFolders, [id]: !s.expandedFolders[id] } })),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   toggleDashboard: () => set((s) => ({ dashboardVisible: !s.dashboardVisible })),
   ensureDashboardVisible: () => { if (!get().dashboardVisible) set({ dashboardVisible: true }); },
-
-  // Section toggles — only for tags/highlights now
   toggleFoldersSection: () => set((s) => ({ foldersCollapsed: !s.foldersCollapsed })),
   toggleTagsSection: () => set((s) => ({ tagsCollapsed: !s.tagsCollapsed })),
   toggleHighlightsSection: () => set((s) => ({ highlightsCollapsed: !s.highlightsCollapsed })),
-
   setDashboardMode: (mode) => {
     if (!get().dashboardVisible) set({ dashboardVisible: true });
     set({ dashboardMode: mode });
   },
-
   setTheme: (t) => { localStorage.setItem('av-theme', t); set({ theme: t }); },
   setShowSettings: (v) => set({ showSettings: v }),
   openFolderModal: (parentId = null) => set({ showFolderModal: true, parentFolderForNew: parentId }),
@@ -249,12 +253,12 @@ const useDataStore = create((set, get) => ({
   closeArticleModal: () => set({ showArticleModal: false, editingArticle: null }),
 
   // ── Computed ──────────────────────────────────────────────
-  /** Folders whose parentId matches currentFolderId */
+  /** Subfolders of currentFolderId (for folders mode) */
   getCurrentSubfolders: () => {
     const { folders, currentFolderId } = get();
     return folders.filter((f) => (f.parentId ?? null) === (currentFolderId ?? null));
   },
-  /** Articles whose folderId matches currentFolderId (null = unfoldered) */
+  /** Articles inside currentFolderId (for articles mode) */
   getCurrentArticles: () => {
     const { articles, currentFolderId, searchQuery, filterTag, filterDateRange, searchScope } = get();
     let f = articles.filter((a) => (a.folderId ?? null) === (currentFolderId ?? null));
@@ -272,7 +276,7 @@ const useDataStore = create((set, get) => ({
     }
     return [...f].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   },
-  /** Global search across ALL articles regardless of folder */
+  /** Global search across all articles */
   getSearchResults: () => {
     const { articles, searchQuery, filterTag, filterDateRange, searchScope } = get();
     if (!searchQuery.trim() && !filterTag && !filterDateRange?.from) return [];
@@ -291,22 +295,25 @@ const useDataStore = create((set, get) => ({
     }
     return [...f].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   },
-  getRecentArticles: (limit = 5) => [...get().articles].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, limit),
+  getRecentArticles: (limit = 5) =>
+    [...get().articles].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, limit),
   getFolderById: (id) => get().folders.find((f) => f.id === id),
   getArticleCount: (folderId) => get().articles.filter((a) => a.folderId === folderId).length,
   getRootFolders: () => get().folders.filter((f) => !f.parentId),
   getChildFolders: (parentId) => get().folders.filter((f) => f.parentId === parentId),
-  /** Returns [{id, name}] chain from root down to folderId */
+  /** [{id, name}] chain from root → folderId */
   getFolderAncestors: (folderId) => {
     if (!folderId) return [];
     const folders = get().folders;
     const chain = [];
     let cur = folders.find((f) => f.id === folderId);
-    while (cur) { chain.unshift({ id: cur.id, name: cur.name }); cur = cur.parentId ? folders.find((f) => f.id === cur.parentId) : null; }
+    while (cur) {
+      chain.unshift({ id: cur.id, name: cur.name });
+      cur = cur.parentId ? folders.find((f) => f.id === cur.parentId) : null;
+    }
     return chain;
   },
   getAllTags: () => [...new Set(get().articles.flatMap((a) => a.tags || []))].sort(),
-  get totalArticles() { return get().articles.length; },
 }));
 
 export const useStore = useDataStore;

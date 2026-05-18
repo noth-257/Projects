@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import {
   BookOpen, FolderOpen, Folder, ChevronDown, ChevronRight,
   Settings, Hash, Trash2, Plus, PanelLeftClose,
-  Highlighter, Download, Upload,
+  Highlighter, Download, Upload, FileText,
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 
@@ -10,13 +10,13 @@ export default function Sidebar() {
   const {
     folders, expandedFolders,
     toggleFolderExpand, deleteFolder, renameFolder,
-    getArticleCount, articles, openFolderModal,
+    getArticleCount, articles, openFolderModal, openArticleModal,
     sidebarCollapsed, toggleSidebar,
     foldersCollapsed, toggleFoldersSection,
     tagsCollapsed, toggleTagsSection,
     highlightsCollapsed, toggleHighlightsSection,
     dashboardMode, setDashboardMode,
-    currentFolderId, navigateToFolder,
+    currentFolderId, browseFolder, openFolderArticles, showFolderBrowser,
     getRootFolders, getChildFolders,
     setShowSettings, highlights,
     highlightColors, highlightColorOrder,
@@ -29,12 +29,6 @@ export default function Sidebar() {
     const files = Array.from(e.target.files || []);
     for (const f of files) await importMarkdownFile(f, currentFolderId);
     e.target.value = '';
-  };
-
-  const goExplorer = (folderId = null) => {
-    ensureDashboardVisible();
-    navigateToFolder(folderId);
-    setDashboardMode('explorer');
   };
 
   // ── COLLAPSED VIEW ─────────────────────────────────────────
@@ -54,51 +48,39 @@ export default function Sidebar() {
         <div className="w-8 mb-3" style={{ height: '1px', background: 'var(--sidebar-border,rgba(255,255,255,0.08))' }} />
 
         {/* All Articles */}
-        <CIBtn
-          icon={<BookOpen size={15} />}
-          title="All Articles"
-          active={dashboardMode === 'explorer' && currentFolderId === null}
-          onClick={() => goExplorer(null)}
-        />
+        <CIBtn icon={<BookOpen size={15} />} title="All Articles"
+          active={dashboardMode === 'articles' && !currentFolderId}
+          onClick={() => { ensureDashboardVisible(); setDashboardMode('articles'); }} />
 
-        {/* Folders — boxed style */}
-        <CIBtn
-          icon={<Folder size={15} />}
-          title="Folders"
-          active={dashboardMode === 'explorer' && currentFolderId !== null}
+        {/* Folders */}
+        <CIBtn icon={<Folder size={15} />} title="Folders"
+          active={dashboardMode === 'folders'}
           onClick={() => {
-            if (dashboardMode === 'explorer' && dashboardVisible && currentFolderId !== null) goExplorer(null);
-            else { ensureDashboardVisible(); setDashboardMode('explorer'); }
-          }}
-        />
+            if (dashboardMode === 'folders' && dashboardVisible) return;
+            showFolderBrowser();
+          }} />
 
-        {/* Tags — boxed style */}
-        <CIBtn
-          icon={<Hash size={15} />}
-          title="Tags"
+        {/* Tags */}
+        <CIBtn icon={<Hash size={15} />} title="Tags"
           active={dashboardMode === 'tags'}
           onClick={() => {
-            if (dashboardMode === 'tags' && dashboardVisible) setDashboardMode('explorer');
+            if (dashboardMode === 'tags' && dashboardVisible) setDashboardMode('folders');
             else { ensureDashboardVisible(); setDashboardMode('tags'); }
-          }}
-        />
+          }} />
 
-        {/* Highlights — boxed style */}
-        <CIBtn
-          icon={<Highlighter size={15} />}
-          title="Highlights"
+        {/* Highlights */}
+        <CIBtn icon={<Highlighter size={15} />} title="Highlights"
           active={dashboardMode === 'highlights'}
           onClick={() => {
-            if (dashboardMode === 'highlights' && dashboardVisible) setDashboardMode('explorer');
+            if (dashboardMode === 'highlights' && dashboardVisible) setDashboardMode('folders');
             else { ensureDashboardVisible(); setDashboardMode('highlights'); }
-          }}
-        />
+          }} />
 
         <div className="flex-1" />
 
-        {/* New Article — moved up from bottom, just below highlights */}
-        <button onClick={() => useStore.getState().openArticleModal()}
-          className="w-10 h-10 rounded-2xl flex items-center justify-center mb-3 text-white hover:scale-105 transition-all"
+        {/* FIX #4: New Article button — positioned like reference image, above settings */}
+        <button onClick={() => openArticleModal()}
+          className="w-10 h-10 rounded-2xl flex items-center justify-center mb-2 text-white hover:scale-105 transition-all"
           style={{
             background: 'linear-gradient(135deg, var(--accent,#5b8dee), var(--accent2,#9b6dff))',
             boxShadow: '0 4px 16px rgba(91,141,238,0.3)',
@@ -119,7 +101,7 @@ export default function Sidebar() {
     <aside className="h-full flex flex-col border-r"
       style={{ width: '256px', background: 'var(--sidebar-bg)', borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
 
-      {/* Header — both logo and arrow collapse */}
+      {/* Header */}
       <div className="px-4 py-4 border-b flex items-center justify-between"
         style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
         <button onClick={toggleSidebar} className="flex items-center gap-3 group" title="Collapse sidebar">
@@ -143,13 +125,18 @@ export default function Sidebar() {
 
         {/* All Articles */}
         <NavItem icon={<BookOpen size={14} />} label="All Articles" count={articles.length}
-          active={dashboardMode === 'explorer' && currentFolderId === null}
-          onClick={() => goExplorer(null)} />
+          active={dashboardMode === 'articles' && !currentFolderId}
+          onClick={() => { ensureDashboardVisible(); setDashboardMode('articles'); }} />
 
-        {/* FOLDERS section — NO "New folder" button here per spec */}
+        {/* FOLDERS — FIX #2: heading click shows root folder list */}
         <div className="pt-3">
           <SecHeader label="Folders" collapsed={foldersCollapsed}
-            onToggle={() => { ensureDashboardVisible(); toggleFoldersSection(); setDashboardMode('explorer'); }} />
+            onToggle={() => {
+              toggleFoldersSection();
+              // FIX #2: always show the folder browser when expanding
+              if (foldersCollapsed) showFolderBrowser();
+              else ensureDashboardVisible();
+            }} />
           {!foldersCollapsed && (
             <div className="mt-1 space-y-0.5">
               {rootFolders.length === 0
@@ -160,7 +147,8 @@ export default function Sidebar() {
                     expandedFolders={expandedFolders}
                     getChildFolders={getChildFolders}
                     getArticleCount={getArticleCount}
-                    onNavigate={(id) => goExplorer(id)}
+                    onBrowse={(id) => { ensureDashboardVisible(); browseFolder(id); }}
+                    onOpenArticles={(id) => { ensureDashboardVisible(); openFolderArticles(id); }}
                     onToggle={toggleFolderExpand}
                     onDelete={deleteFolder}
                     onRename={renameFolder}
@@ -178,13 +166,13 @@ export default function Sidebar() {
             onToggle={() => {
               toggleTagsSection();
               ensureDashboardVisible();
-              setDashboardMode(dashboardMode === 'tags' ? 'explorer' : 'tags');
+              setDashboardMode(dashboardMode === 'tags' ? 'folders' : 'tags');
             }} />
           {!tagsCollapsed && (
             <div className="mt-1">
               <NavItem icon={<Hash size={14} />} label="All Tags"
                 active={dashboardMode === 'tags'}
-                onClick={() => { ensureDashboardVisible(); setDashboardMode(dashboardMode === 'tags' ? 'explorer' : 'tags'); }} />
+                onClick={() => { ensureDashboardVisible(); setDashboardMode(dashboardMode === 'tags' ? 'folders' : 'tags'); }} />
             </div>
           )}
         </div>
@@ -195,13 +183,13 @@ export default function Sidebar() {
             onToggle={() => {
               toggleHighlightsSection();
               ensureDashboardVisible();
-              setDashboardMode(dashboardMode === 'highlights' ? 'explorer' : 'highlights');
+              setDashboardMode(dashboardMode === 'highlights' ? 'folders' : 'highlights');
             }} />
           {!highlightsCollapsed && (
             <div className="mt-1 space-y-0.5">
               <NavItem icon={<Highlighter size={14} />} label="All Highlights"
                 active={dashboardMode === 'highlights'}
-                onClick={() => { ensureDashboardVisible(); setDashboardMode(dashboardMode === 'highlights' ? 'explorer' : 'highlights'); }} />
+                onClick={() => { ensureDashboardVisible(); setDashboardMode(dashboardMode === 'highlights' ? 'folders' : 'highlights'); }} />
               {highlightColorOrder.map((cid) => {
                 const c = highlightColors[cid];
                 const count = highlights.filter((h) => h.color === cid).length;
@@ -219,18 +207,21 @@ export default function Sidebar() {
           )}
         </div>
 
-        {/* New Article button — below highlights, above settings */}
-        <div className="pt-4">
-          <button onClick={() => useStore.getState().openArticleModal()}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90"
-            style={{ background: 'linear-gradient(135deg, var(--accent,#5b8dee), var(--accent2,#9b6dff))', boxShadow: '0 4px 12px rgba(91,141,238,0.25)' }}>
-            <Plus size={15} /> New Article
+        {/* FIX #4: New Article — below highlights, full width gradient button */}
+        <div className="pt-4 px-0">
+          <button onClick={() => openArticleModal()}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium text-white transition-all hover:opacity-90 active:scale-[0.98]"
+            style={{
+              background: 'linear-gradient(135deg, var(--accent,#5b8dee), var(--accent2,#9b6dff))',
+              boxShadow: '0 4px 14px rgba(91,141,238,0.25)',
+            }}>
+            <Plus size={16} /> New Article
           </button>
         </div>
 
       </nav>
 
-      {/* Bottom */}
+      {/* Bottom actions */}
       <div className="px-3 py-3 border-t space-y-0.5"
         style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
         <NavItem icon={<Download size={14} />} label="Export All" onClick={exportAllArticles} />
@@ -248,7 +239,7 @@ export default function Sidebar() {
 
 // ── Recursive folder tree ──────────────────────────────────────
 function FolderTree({ folder, depth, currentFolderId, expandedFolders, getChildFolders,
-  getArticleCount, onNavigate, onToggle, onDelete, onRename, onAddChild }) {
+  getArticleCount, onBrowse, onOpenArticles, onToggle, onDelete, onRename, onAddChild }) {
   const children = getChildFolders(folder.id);
   const isActive = currentFolderId === folder.id;
   const isExpanded = !!expandedFolders[folder.id];
@@ -277,10 +268,9 @@ function FolderTree({ folder, depth, currentFolderId, expandedFolders, getChildF
         onMouseLeave={() => setHovered(false)}
         onDragOver={handleDragOver}
         onDrop={handleDrop}
-        onClick={() => { onToggle(folder.id); onNavigate(folder.id); }}
+        onClick={() => { onToggle(folder.id); onBrowse(folder.id); }}
       >
-        <button
-          onClick={(e) => { e.stopPropagation(); onToggle(folder.id); }}
+        <button onClick={(e) => { e.stopPropagation(); onToggle(folder.id); }}
           className="w-5 h-5 flex items-center justify-center flex-shrink-0"
           style={{ color: 'var(--text-muted,#64748b)' }}>
           <ChevronRight size={13} className="transition-transform duration-200"
@@ -324,8 +314,8 @@ function FolderTree({ folder, depth, currentFolderId, expandedFolders, getChildF
             <FolderTree key={child.id} folder={child} depth={depth + 1}
               currentFolderId={currentFolderId} expandedFolders={expandedFolders}
               getChildFolders={getChildFolders} getArticleCount={getArticleCount}
-              onNavigate={onNavigate} onToggle={onToggle} onDelete={onDelete}
-              onRename={onRename} onAddChild={onAddChild} />
+              onBrowse={onBrowse} onOpenArticles={onOpenArticles}
+              onToggle={onToggle} onDelete={onDelete} onRename={onRename} onAddChild={onAddChild} />
           ))}
         </div>
       )}
@@ -371,7 +361,6 @@ function NavItem({ icon, label, count, active, onClick }) {
   );
 }
 
-// CIBtn — collapsed icon button, always boxed
 function CIBtn({ icon, active, onClick, title }) {
   return (
     <button onClick={onClick} title={title}
