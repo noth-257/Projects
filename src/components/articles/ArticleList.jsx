@@ -218,6 +218,17 @@ export default function ArticleList() {
         </div>
 
 
+        {/* New Article — always shown regardless of sidebar state */}
+        <button
+          onClick={() => openArticleModal()}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-medium text-white mb-3 transition-all hover:opacity-90 active:scale-[0.98]"
+          style={{
+            background: 'linear-gradient(135deg, var(--accent,#5b8dee), var(--accent2,#9b6dff))',
+            boxShadow: '0 4px 14px rgba(91,141,238,0.25)',
+          }}>
+          <Plus size={15} /> New Article
+        </button>
+
         {/* Search */}
         <div className="relative">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted,#64748b)' }} />
