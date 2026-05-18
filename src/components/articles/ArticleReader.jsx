@@ -93,7 +93,7 @@ export default function ArticleReader() {
 
   if (!selectedArticle) return <EmptyReader />;
 
-  const folder = selectedArticle.folderId ? getFolderById(selectedArticle.folderId) : null;
+  const folder = selectedArticle.folderId ? getFolderById(selectedArticle?.folderId) : null;
 
   // Build segments
   const plainText = selectedArticle.content || '';

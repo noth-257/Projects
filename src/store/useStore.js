@@ -23,7 +23,7 @@ export const DEFAULT_COLOR_ORDER = ['yellow', 'red', 'green', 'blue', 'purple', 
 
 const useDataStore = create((set, get) => ({
   folders: [], articles: [], loading: true,
-  selectedFolderId: null, selectedArticle: null,
+  selectedArticle: null,
   highlights: [], highlightsLoading: false,
   searchQuery: '', filterTag: null, filterDateRange: null, searchScope: 'all',
   showFolderModal: false, showArticleModal: false,
@@ -32,13 +32,27 @@ const useDataStore = create((set, get) => ({
   dashboardVisible: true,
   foldersCollapsed: false, tagsCollapsed: false, highlightsCollapsed: false,
   expandedFolders: {},
-  dashboardView: 'articles',
-  // folderDashboardId: null = root, number = drilled into that folder
-  folderDashboardId: null,
   showSettings: false,
   theme: 'dark',
   highlightColors: { ...DEFAULT_HIGHLIGHT_COLORS },
   highlightColorOrder: [...DEFAULT_COLOR_ORDER],
+
+  /**
+   * UNIFIED NAVIGATION STATE
+   * ─────────────────────────
+   * dashboardMode: 'explorer' | 'tags' | 'highlights'
+   *   - 'explorer' = the single unified folder+article view (replaces both 'articles' and 'folders')
+   *   - 'tags'     = tags panel
+   *   - 'highlights' = highlights panel
+   *
+   * currentFolderId: null | number
+   *   - null  = root (shows all root folders + unfoldered articles)
+   *   - id    = inside that folder (shows its subfolders + its articles)
+   *
+   * selectedArticle stays separate (opens in reader)
+   */
+  dashboardMode: 'explorer',
+  currentFolderId: null,   // single source of truth for "where am I"
 
   // ── Loaders ───────────────────────────────────────────────
   loadFolders: async () => { set({ folders: await db.folders.orderBy('createdAt').toArray() }); },
@@ -68,8 +82,11 @@ const useDataStore = create((set, get) => ({
     for (const c of children) await get().deleteFolder(c.id);
     await db.folders.delete(id);
     await db.articles.where('folderId').equals(id).modify({ folderId: null });
-    if (get().selectedFolderId === id) set({ selectedFolderId: null });
-    if (get().folderDashboardId === id) set({ folderDashboardId: null });
+    // If we were inside the deleted folder, go up to parent
+    if (get().currentFolderId === id) {
+      const folder = get().folders.find((f) => f.id === id);
+      set({ currentFolderId: folder?.parentId ?? null });
+    }
     await get().loadFolders(); await get().loadArticles();
   },
   renameFolder: async (id, name) => {
@@ -106,10 +123,8 @@ const useDataStore = create((set, get) => ({
     await get().loadArticles();
     if (get().selectedArticle?.id === id) set({ selectedArticle: await db.articles.get(id) });
   },
-  // FIX #5: moveArticleToFolder — accepts both number and null correctly
   moveArticleToFolder: async (articleId, folderId) => {
-    const fid = (folderId !== null && folderId !== undefined && folderId !== '')
-      ? Number(folderId) : null;
+    const fid = (folderId !== null && folderId !== undefined && folderId !== '') ? Number(folderId) : null;
     await db.articles.update(Number(articleId), { folderId: fid, updatedAt: new Date() });
     await get().loadArticles();
   },
@@ -166,7 +181,7 @@ const useDataStore = create((set, get) => ({
   exportAllArticles: async () => {
     const articles = await db.articles.toArray();
     const folders = get().folders;
-    const blob = new Blob([articles.map((a) => { const f = folders.find((x) => x.id === a.folderId); return `# ${a.title}\n_${f?.name || 'None'}_\n\n${a.content}\n\n---\n`; }).join('\n')], { type: 'text/markdown' });
+    const blob = new Blob([articles.map((a) => { const f = folders.find((x) => x.id === a.folderId); return `# ${a.title}\n_${f?.name||'None'}_\n\n${a.content}\n\n---\n`; }).join('\n')], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = 'ArticleVault_export.md'; a.click();
     URL.revokeObjectURL(url);
@@ -183,8 +198,25 @@ const useDataStore = create((set, get) => ({
     await get().createArticle({ title, content, folderId, tags });
   },
 
-  // ── UI ────────────────────────────────────────────────────
-  setSelectedFolder: (id) => set({ selectedFolderId: id, selectedArticle: null, highlights: [] }),
+  // ── Navigation (unified) ──────────────────────────────────
+  /**
+   * Navigate to a folder in the explorer.
+   * Always switches to explorer mode and sets currentFolderId.
+   */
+  navigateToFolder: (folderId) => {
+    if (!get().dashboardVisible) set({ dashboardVisible: true });
+    set({ dashboardMode: 'explorer', currentFolderId: folderId ?? null, selectedArticle: null, highlights: [] });
+  },
+  /**
+   * Navigate up one level (to parent folder).
+   */
+  navigateUp: () => {
+    const { currentFolderId, folders } = get();
+    if (currentFolderId === null) return;
+    const current = folders.find((f) => f.id === currentFolderId);
+    set({ currentFolderId: current?.parentId ?? null });
+  },
+
   setSelectedArticle: async (article) => {
     set({ selectedArticle: article, highlights: [] });
     if (article) await get().loadHighlights(article.id);
@@ -193,31 +225,21 @@ const useDataStore = create((set, get) => ({
   setFilterTag: (tag) => set({ filterTag: tag }),
   setFilterDateRange: (r) => set({ filterDateRange: r }),
   setSearchScope: (s) => set({ searchScope: s }),
+
   toggleFolderExpand: (id) => set((s) => ({ expandedFolders: { ...s.expandedFolders, [id]: !s.expandedFolders[id] } })),
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
   toggleDashboard: () => set((s) => ({ dashboardVisible: !s.dashboardVisible })),
-
-  // FIX #1: any nav action that needs dashboard auto-expands it
   ensureDashboardVisible: () => { if (!get().dashboardVisible) set({ dashboardVisible: true }); },
 
-  toggleFoldersSection: () => set((s) => {
-    const nowCollapsed = !s.foldersCollapsed;
-    return {
-      foldersCollapsed: nowCollapsed,
-      dashboardView: nowCollapsed ? 'articles' : 'folders',
-      folderDashboardId: nowCollapsed ? null : s.folderDashboardId,
-    };
-  }),
-  toggleTagsSection: () => set((s) => ({
-    tagsCollapsed: !s.tagsCollapsed,
-    dashboardView: s.tagsCollapsed ? 'tags' : 'articles',
-  })),
-  toggleHighlightsSection: () => set((s) => ({
-    highlightsCollapsed: !s.highlightsCollapsed,
-    dashboardView: s.highlightsCollapsed ? 'highlights' : 'articles',
-  })),
-  setDashboardView: (view) => set({ dashboardView: view }),
-  setFolderDashboardId: (id) => set({ folderDashboardId: id, dashboardView: 'folders' }),
+  // Section toggles — only for tags/highlights now
+  toggleFoldersSection: () => set((s) => ({ foldersCollapsed: !s.foldersCollapsed })),
+  toggleTagsSection: () => set((s) => ({ tagsCollapsed: !s.tagsCollapsed })),
+  toggleHighlightsSection: () => set((s) => ({ highlightsCollapsed: !s.highlightsCollapsed })),
+
+  setDashboardMode: (mode) => {
+    if (!get().dashboardVisible) set({ dashboardVisible: true });
+    set({ dashboardMode: mode });
+  },
 
   setTheme: (t) => { localStorage.setItem('av-theme', t); set({ theme: t }); },
   setShowSettings: (v) => set({ showSettings: v }),
@@ -227,10 +249,15 @@ const useDataStore = create((set, get) => ({
   closeArticleModal: () => set({ showArticleModal: false, editingArticle: null }),
 
   // ── Computed ──────────────────────────────────────────────
-  getFilteredArticles: () => {
-    const { articles, selectedFolderId, searchQuery, filterTag, filterDateRange, searchScope } = get();
-    let f = articles;
-    if (selectedFolderId !== null) f = f.filter((a) => a.folderId === selectedFolderId);
+  /** Folders whose parentId matches currentFolderId */
+  getCurrentSubfolders: () => {
+    const { folders, currentFolderId } = get();
+    return folders.filter((f) => (f.parentId ?? null) === (currentFolderId ?? null));
+  },
+  /** Articles whose folderId matches currentFolderId (null = unfoldered) */
+  getCurrentArticles: () => {
+    const { articles, currentFolderId, searchQuery, filterTag, filterDateRange, searchScope } = get();
+    let f = articles.filter((a) => (a.folderId ?? null) === (currentFolderId ?? null));
     if (filterTag) f = f.filter((a) => a.tags?.includes(filterTag));
     if (filterDateRange?.from) f = f.filter((a) => new Date(a.createdAt) >= filterDateRange.from);
     if (filterDateRange?.to) f = f.filter((a) => new Date(a.createdAt) <= filterDateRange.to);
@@ -245,34 +272,41 @@ const useDataStore = create((set, get) => ({
     }
     return [...f].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   },
-  getRecentArticles: (limit = 5) => {
-    return [...get().articles]
-      .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
-      .slice(0, limit);
+  /** Global search across ALL articles regardless of folder */
+  getSearchResults: () => {
+    const { articles, searchQuery, filterTag, filterDateRange, searchScope } = get();
+    if (!searchQuery.trim() && !filterTag && !filterDateRange?.from) return [];
+    let f = articles;
+    if (filterTag) f = f.filter((a) => a.tags?.includes(filterTag));
+    if (filterDateRange?.from) f = f.filter((a) => new Date(a.createdAt) >= filterDateRange.from);
+    if (filterDateRange?.to) f = f.filter((a) => new Date(a.createdAt) <= filterDateRange.to);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      f = f.filter((a) => {
+        if (searchScope === 'title') return a.title.toLowerCase().includes(q);
+        if (searchScope === 'tags') return a.tags?.some((t) => t.toLowerCase().includes(q));
+        if (searchScope === 'content') return a.content?.toLowerCase().includes(q);
+        return a.title.toLowerCase().includes(q) || a.content?.toLowerCase().includes(q) || a.tags?.some((t) => t.toLowerCase().includes(q));
+      });
+    }
+    return [...f].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   },
+  getRecentArticles: (limit = 5) => [...get().articles].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, limit),
   getFolderById: (id) => get().folders.find((f) => f.id === id),
   getArticleCount: (folderId) => get().articles.filter((a) => a.folderId === folderId).length,
   getRootFolders: () => get().folders.filter((f) => !f.parentId),
   getChildFolders: (parentId) => get().folders.filter((f) => f.parentId === parentId),
-  // FIX #4: returns array of {id, name} from root down to folderId
+  /** Returns [{id, name}] chain from root down to folderId */
   getFolderAncestors: (folderId) => {
     if (!folderId) return [];
     const folders = get().folders;
     const chain = [];
     let cur = folders.find((f) => f.id === folderId);
-    while (cur) {
-      chain.unshift({ id: cur.id, name: cur.name });
-      cur = cur.parentId ? folders.find((f) => f.id === cur.parentId) : null;
-    }
-    return chain; // [{id, name}, ...] from root → current
-  },
-  getFolderPath: (folderId) => {
-    if (!folderId) return null;
-    const ancestors = get().getFolderAncestors(folderId);
-    if (!ancestors.length) return null;
-    return ['Folders', ...ancestors.map((a) => a.name)].join(' / ');
+    while (cur) { chain.unshift({ id: cur.id, name: cur.name }); cur = cur.parentId ? folders.find((f) => f.id === cur.parentId) : null; }
+    return chain;
   },
   getAllTags: () => [...new Set(get().articles.flatMap((a) => a.tags || []))].sort(),
+  get totalArticles() { return get().articles.length; },
 }));
 
 export const useStore = useDataStore;
