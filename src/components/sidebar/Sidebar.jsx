@@ -133,9 +133,9 @@ export default function Sidebar() {
           <SecHeader label="Folders" collapsed={foldersCollapsed}
             onToggle={() => {
               toggleFoldersSection();
-              // FIX #2: always show the folder browser when expanding
-              if (foldersCollapsed) showFolderBrowser();
-              else ensureDashboardVisible();
+              // Always show the folder browser when clicking Folders heading
+              // regardless of whether it was collapsed or expanded
+              showFolderBrowser();
             }} />
           {!foldersCollapsed && (
             <div className="mt-1 space-y-0.5">

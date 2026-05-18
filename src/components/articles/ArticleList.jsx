@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import {
-  Search, FileText, Folder, ChevronRight, X,
-  SlidersHorizontal, Plus, Pencil, Trash2, Clock,
+  Search, Folder, ChevronRight, X,
+  SlidersHorizontal, Plus, Pencil, Trash2, Clock, FileText,
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 import ArticleCard from './ArticleCard';
 import { ArticleCardSkeleton } from '../ui/Skeleton';
-import Button from '../ui/Button';
 import { formatDate } from '../../utils/helpers';
 
 export default function ArticleList() {
@@ -15,7 +14,7 @@ export default function ArticleList() {
     currentFolderId, browseFolder, openFolderArticles, goToRoot,
     getFolderById, getFolderAncestors, getChildFolders, getArticleCount,
     getCurrentSubfolders, getCurrentArticles, getRecentArticles, getSearchResults,
-    openArticleModal, openFolderModal, sidebarCollapsed,
+    openArticleModal, openFolderModal,
     searchQuery, setSearchQuery, filterTag, setFilterTag,
     filterDateRange, setFilterDateRange, searchScope, setSearchScope,
     articles, getAllTags,
@@ -218,13 +217,6 @@ export default function ArticleList() {
           </div>
         </div>
 
-        {/* New Article button */}
-        {!sidebarCollapsed && (
-          <Button variant="primary" size="sm" className="w-full mb-3 justify-center"
-            icon={<FileText size={13} />} onClick={() => openArticleModal()}>
-            New Article
-          </Button>
-        )}
 
         {/* Search */}
         <div className="relative">
