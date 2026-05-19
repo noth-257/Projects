@@ -1,15 +1,18 @@
 import { useState } from 'react';
 import { Trash2, ChevronDown, Highlighter } from 'lucide-react';
-import { HIGHLIGHT_COLORS, COLOR_ORDER } from '../../utils/highlightUtils';
 import { useStore } from '../../store/useStore';
 
 /**
- * HighlightSidebar
- * Right panel listing all highlights grouped by color.
- * Clicking a highlight navigates to it in the reader.
+ * HighlightSidebar — lists all highlights for the current article,
+ * grouped by color. showHeader=false when header is rendered by parent.
+ * Uses store's highlightColors so custom colors work too.
  */
-export default function HighlightSidebar({ onJumpTo }) {
-  const { highlights, deleteHighlight, updateHighlightColor } = useStore();
+export default function HighlightSidebar({ onJumpTo, showHeader = true }) {
+  const {
+    highlights, deleteHighlight, updateHighlightColor,
+    highlightColors, highlightColorOrder,
+  } = useStore();
+
   const [collapsed, setCollapsed] = useState({});
 
   if (highlights.length === 0) {
@@ -17,49 +20,65 @@ export default function HighlightSidebar({ onJumpTo }) {
       <div className="flex flex-col items-center justify-center h-full text-center px-6">
         <div className="w-12 h-12 rounded-2xl flex items-center justify-center mb-4"
           style={{ background: 'rgba(155,109,255,0.1)', border: '1px solid rgba(155,109,255,0.2)' }}>
-          <Highlighter size={20} className="text-aurora-purple opacity-70" />
+          <Highlighter size={20} style={{ color: '#a78bfa', opacity: 0.7 }} />
         </div>
-        <p className="text-ink-300 text-sm font-medium mb-1">No highlights yet</p>
-        <p className="text-ink-500 text-xs">Select text in the article to highlight it</p>
+        <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-secondary,#c5c9e8)' }}>
+          No highlights yet
+        </p>
+        <p className="text-xs" style={{ color: 'var(--text-muted,#64748b)' }}>
+          Select text in the article to highlight it
+        </p>
       </div>
     );
   }
 
-  // Group by color
+  // Group highlights by color, preserving custom color order
   const grouped = {};
-  for (const colorId of COLOR_ORDER) {
+  for (const colorId of highlightColorOrder) {
     const group = highlights.filter((h) => h.color === colorId);
     if (group.length > 0) grouped[colorId] = group;
+  }
+  // Also catch highlights with colors not in the order (edge case)
+  for (const h of highlights) {
+    if (!grouped[h.color]) grouped[h.color] = [];
+    if (!grouped[h.color].includes(h)) grouped[h.color].push(h);
   }
 
   return (
     <div className="flex flex-col h-full overflow-y-auto scrollbar-thin">
-      <div className="px-4 py-4 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <h3 className="text-sm font-semibold text-ink-200 font-display">Highlights</h3>
-        <p className="text-ink-500 text-xs mt-0.5">{highlights.length} total</p>
-      </div>
+      {showHeader && (
+        <div className="px-4 py-4 border-b" style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
+          <h3 className="text-sm font-semibold font-display" style={{ color: 'var(--text-primary,#e8eaf6)' }}>
+            Highlights
+          </h3>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted,#64748b)' }}>
+            {highlights.length} total
+          </p>
+        </div>
+      )}
 
       <div className="flex-1 px-3 py-3 space-y-4">
         {Object.entries(grouped).map(([colorId, items]) => {
-          const c = HIGHLIGHT_COLORS[colorId];
+          const c = highlightColors[colorId];
+          if (!c) return null;
           const isCollapsed = collapsed[colorId];
+
           return (
             <div key={colorId}>
-              {/* Group header */}
               <button
                 onClick={() => setCollapsed((s) => ({ ...s, [colorId]: !s[colorId] }))}
-                className="flex items-center gap-2 w-full mb-2 group"
-              >
+                className="flex items-center gap-2 w-full mb-2 group">
                 <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: c.dot }} />
-                <span className="text-xs font-semibold text-ink-300 group-hover:text-ink-100 transition-colors flex-1 text-left">
+                <span className="text-xs font-semibold flex-1 text-left transition-colors group-hover:text-white"
+                  style={{ color: 'var(--text-secondary,#c5c9e8)' }}>
                   {c.label}
                 </span>
-                <span className="text-[10px] text-ink-500 font-mono">{items.length}</span>
-                <ChevronDown size={11} className="text-ink-500 transition-transform duration-200"
-                  style={{ transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0)' }} />
+                <span className="text-[10px] font-mono" style={{ color: 'var(--text-muted,#64748b)' }}>
+                  {items.length}
+                </span>
+                <ChevronDown size={11} style={{ color: 'var(--text-muted,#64748b)', transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0)', transition: 'transform 0.2s' }} />
               </button>
 
-              {/* Highlight cards */}
               {!isCollapsed && (
                 <div className="space-y-1.5 pl-2">
                   {items.map((h) => (
@@ -67,6 +86,8 @@ export default function HighlightSidebar({ onJumpTo }) {
                       key={h.id}
                       highlight={h}
                       color={c}
+                      highlightColors={highlightColors}
+                      highlightColorOrder={highlightColorOrder}
                       onJump={() => onJumpTo(h.id)}
                       onDelete={() => deleteHighlight(h.id)}
                       onColorChange={(newColor) => updateHighlightColor(h.id, newColor)}
@@ -82,33 +103,31 @@ export default function HighlightSidebar({ onJumpTo }) {
   );
 }
 
-function HighlightCard({ highlight, color, onJump, onDelete, onColorChange }) {
-  const [showColors, setShowColors] = useState(false);
-
+function HighlightCard({ highlight, color, highlightColors, highlightColorOrder, onJump, onDelete, onColorChange }) {
   return (
     <div
       className="group rounded-xl p-3 cursor-pointer transition-all duration-150"
       style={{ background: color.bg, border: `1px solid ${color.border}` }}
-      onClick={onJump}
-    >
-      <p className="text-xs text-ink-100 leading-relaxed line-clamp-3 mb-2">
+      onClick={onJump}>
+      <p className="text-xs leading-relaxed line-clamp-3 mb-2" style={{ color: 'var(--text-primary,#e8eaf6)' }}>
         "{highlight.selectedText}"
       </p>
-
       <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-        {/* Color dots to change color */}
-        {COLOR_ORDER.map((cid) => (
-          <button key={cid}
-            onClick={(e) => { e.stopPropagation(); onColorChange(cid); }}
-            className="w-3.5 h-3.5 rounded-full transition-transform hover:scale-125"
-            style={{ background: HIGHLIGHT_COLORS[cid].dot }}
-            title={HIGHLIGHT_COLORS[cid].label} />
-        ))}
+        {highlightColorOrder.map((cid) => {
+          const c = highlightColors[cid];
+          if (!c) return null;
+          return (
+            <button key={cid}
+              onClick={(e) => { e.stopPropagation(); onColorChange(cid); }}
+              className="w-3.5 h-3.5 rounded-full transition-transform hover:scale-125"
+              style={{ background: c.dot }}
+              title={c.label} />
+          );
+        })}
         <div className="flex-1" />
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="w-5 h-5 flex items-center justify-center rounded text-red-400 hover:bg-red-500/20 transition-colors"
-        >
+          className="w-5 h-5 flex items-center justify-center rounded text-red-400 hover:bg-red-500/20 transition-colors">
           <Trash2 size={11} />
         </button>
       </div>
