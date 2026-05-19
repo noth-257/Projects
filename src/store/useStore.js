@@ -298,7 +298,18 @@ const useDataStore = create((set, get) => ({
   getRecentArticles: (limit = 5) =>
     [...get().articles].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)).slice(0, limit),
   getFolderById: (id) => get().folders.find((f) => f.id === id),
+  /** Count articles directly in folderId (non-recursive) */
   getArticleCount: (folderId) => get().articles.filter((a) => a.folderId === folderId).length,
+  /** Recursively count all articles in folderId and all its descendants */
+  getArticleCountDeep: (folderId) => {
+    const { articles, folders } = get();
+    const collectIds = (id) => {
+      const direct = articles.filter((a) => a.folderId === id).length;
+      const children = folders.filter((f) => f.parentId === id);
+      return direct + children.reduce((sum, c) => sum + collectIds(c.id), 0);
+    };
+    return collectIds(folderId);
+  },
   getRootFolders: () => get().folders.filter((f) => !f.parentId),
   getChildFolders: (parentId) => get().folders.filter((f) => f.parentId === parentId),
   /** [{id, name}] chain from root → folderId */

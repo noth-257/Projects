@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import {
   BookOpen, FolderOpen, Folder, ChevronDown, ChevronRight,
   Settings, Hash, Trash2, Plus, PanelLeftClose,
-  Highlighter, Download, Upload, FileText,
+  Highlighter, Download, Upload, FileText, PenLine,
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 
@@ -10,8 +10,8 @@ export default function Sidebar() {
   const {
     folders, expandedFolders,
     toggleFolderExpand, deleteFolder, renameFolder,
-    getArticleCount, articles, openFolderModal, openArticleModal,
-    sidebarCollapsed, toggleSidebar,
+    getArticleCount, getArticleCountDeep, articles, openFolderModal, openArticleModal,
+    sidebarCollapsed, toggleSidebar, toggleDashboard,
     foldersCollapsed, toggleFoldersSection,
     tagsCollapsed, toggleTagsSection,
     highlightsCollapsed, toggleHighlightsSection,
@@ -49,30 +49,33 @@ export default function Sidebar() {
 
         {/* All Articles */}
         <CIBtn icon={<BookOpen size={15} />} title="All Articles"
-          active={dashboardMode === 'articles' && !currentFolderId}
-          onClick={() => { ensureDashboardVisible(); setDashboardMode('articles'); }} />
+          active={dashboardMode === 'articles' && !currentFolderId && dashboardVisible}
+          onClick={() => {
+            if (dashboardMode === 'articles' && !currentFolderId && dashboardVisible) toggleDashboard();
+            else { ensureDashboardVisible(); setDashboardMode('articles'); }
+          }} />
 
         {/* Folders */}
         <CIBtn icon={<Folder size={15} />} title="Folders"
-          active={dashboardMode === 'folders'}
+          active={dashboardMode === 'folders' && dashboardVisible}
           onClick={() => {
-            if (dashboardMode === 'folders' && dashboardVisible) return;
-            showFolderBrowser();
+            if (dashboardMode === 'folders' && dashboardVisible) toggleDashboard();
+            else showFolderBrowser();
           }} />
 
         {/* Tags */}
         <CIBtn icon={<Hash size={15} />} title="Tags"
-          active={dashboardMode === 'tags'}
+          active={dashboardMode === 'tags' && dashboardVisible}
           onClick={() => {
-            if (dashboardMode === 'tags' && dashboardVisible) setDashboardMode('folders');
+            if (dashboardMode === 'tags' && dashboardVisible) toggleDashboard();
             else { ensureDashboardVisible(); setDashboardMode('tags'); }
           }} />
 
         {/* Highlights */}
         <CIBtn icon={<Highlighter size={15} />} title="Highlights"
-          active={dashboardMode === 'highlights'}
+          active={dashboardMode === 'highlights' && dashboardVisible}
           onClick={() => {
-            if (dashboardMode === 'highlights' && dashboardVisible) setDashboardMode('folders');
+            if (dashboardMode === 'highlights' && dashboardVisible) toggleDashboard();
             else { ensureDashboardVisible(); setDashboardMode('highlights'); }
           }} />
 
@@ -147,6 +150,7 @@ export default function Sidebar() {
                     expandedFolders={expandedFolders}
                     getChildFolders={getChildFolders}
                     getArticleCount={getArticleCount}
+                    getArticleCountDeep={getArticleCountDeep}
                     onBrowse={(id) => { ensureDashboardVisible(); browseFolder(id); }}
                     onOpenArticles={(id) => { ensureDashboardVisible(); openFolderArticles(id); }}
                     onToggle={toggleFolderExpand}
@@ -239,14 +243,14 @@ export default function Sidebar() {
 
 // ── Recursive folder tree ──────────────────────────────────────
 function FolderTree({ folder, depth, currentFolderId, expandedFolders, getChildFolders,
-  getArticleCount, onBrowse, onOpenArticles, onToggle, onDelete, onRename, onAddChild }) {
+  getArticleCount, getArticleCountDeep, onBrowse, onOpenArticles, onToggle, onDelete, onRename, onAddChild }) {
   const children = getChildFolders(folder.id);
   const isActive = currentFolderId === folder.id;
   const isExpanded = !!expandedFolders[folder.id];
   const [hovered, setHovered] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameVal, setRenameVal] = useState(folder.name);
-  const count = getArticleCount(folder.id);
+  const count = getArticleCountDeep(folder.id);
 
   const handleDragOver = (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
   const handleDrop = async (e) => {
@@ -290,7 +294,7 @@ function FolderTree({ folder, depth, currentFolderId, expandedFolders, getChildF
               className="flex-1 bg-transparent border-b text-xs outline-none"
               style={{ borderColor: 'var(--accent,#5b8dee)', color: 'var(--text-primary,#e8eaf6)' }} />
           ) : (
-            <span className="truncate text-sm" onDoubleClick={(e) => { e.stopPropagation(); setRenaming(true); }}>{folder.name}</span>
+            <span className="truncate text-sm" title="Double-click to rename" onDoubleClick={(e) => { e.stopPropagation(); setRenaming(true); }}>{folder.name}</span>
           )}
         </span>
 
@@ -298,6 +302,11 @@ function FolderTree({ folder, depth, currentFolderId, expandedFolders, getChildF
           <button onClick={(e) => { e.stopPropagation(); onAddChild(folder.id); }}
             className="w-5 h-5 flex items-center justify-center rounded-md hover:text-blue-400 transition-colors"
             style={{ color: 'var(--text-muted,#64748b)' }} title="Add subfolder"><Plus size={12} /></button>
+          <button onClick={(e) => { e.stopPropagation(); setRenaming(true); }}
+            className="w-5 h-5 flex items-center justify-center rounded-md transition-colors"
+            style={{ color: 'var(--text-muted,#64748b)' }} title="Rename folder"
+            onMouseEnter={(e) => e.currentTarget.style.color='var(--accent,#5b8dee)'}
+            onMouseLeave={(e) => e.currentTarget.style.color='var(--text-muted,#64748b)'}><PenLine size={11} /></button>
           <button onClick={(e) => { e.stopPropagation(); onDelete(folder.id); }}
             className="w-5 h-5 flex items-center justify-center rounded-md hover:text-red-400 transition-colors"
             style={{ color: 'var(--text-muted,#64748b)' }}><Trash2 size={12} /></button>
@@ -315,6 +324,7 @@ function FolderTree({ folder, depth, currentFolderId, expandedFolders, getChildF
               currentFolderId={currentFolderId} expandedFolders={expandedFolders}
               getChildFolders={getChildFolders} getArticleCount={getArticleCount}
               onBrowse={onBrowse} onOpenArticles={onOpenArticles}
+              getArticleCountDeep={getArticleCountDeep}
               onToggle={onToggle} onDelete={onDelete} onRename={onRename} onAddChild={onAddChild} />
           ))}
         </div>
