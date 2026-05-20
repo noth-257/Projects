@@ -1,6 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   Edit3, Trash2, Folder, Clock, ChevronLeft,
   Highlighter, Minus, Plus, X,
@@ -9,6 +7,7 @@ import { useStore } from '../../store/useStore';
 import Tag from '../ui/Tag';
 import Button from '../ui/Button';
 import { formatDate } from '../../utils/helpers';
+import { renderWithHighlights } from '../../utils/renderWithHighlights';
 import HighlightPopup from '../reader/HighlightPopup';
 import HighlightSidebar from '../reader/HighlightSidebar';
 
@@ -19,32 +18,61 @@ export default function ArticleReader() {
     highlightColors, highlightColorOrder,
   } = useStore();
 
+  // ── All hooks unconditionally at top ──────────────────────
   const [deleting, setDeleting]                     = useState(false);
   const [showHighlightPanel, setShowHighlightPanel] = useState(false);
   const [popup, setPopup]                           = useState(null);
-  const [scrollToId, setScrollToId]                 = useState(null);
   const [readProgress, setReadProgress]             = useState(0);
   const [fontSize, setFontSize]                     = useState(15);
   const [lastColor, setLastColor]                   = useState('yellow');
-  const markRefs   = useRef({});
-  const scrollRef  = useRef(null);
+  const contentRef = useRef(null);
 
-  // ── Scroll progress ──────────────────────────────────────
+  // Memoize rendered HTML so it only recomputes when article or highlights change
+  const renderedHTML = useMemo(() => {
+    if (!selectedArticle) return '';
+    return renderWithHighlights(
+      selectedArticle.content || '',
+      highlights,
+      highlightColors,
+    );
+  }, [selectedArticle?.id, selectedArticle?.content, highlights, highlightColors]);
+
   const handleScroll = useCallback((e) => {
     const el = e.currentTarget;
     const total = el.scrollHeight - el.clientHeight;
     setReadProgress(total > 0 ? Math.round((el.scrollTop / total) * 100) : 0);
   }, []);
 
-  // ── Jump to highlight ────────────────────────────────────
-  const handleJumpTo = useCallback((id) => {
-    setScrollToId(id);
-    setTimeout(() => setScrollToId(null), 2000);
-    const el = markRefs.current[id];
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // Text selection → show popup
+  const handleMouseUp = useCallback(() => {
+    // Use setTimeout so selection is finalized; capture ref before
+    const el = contentRef.current;
+    setTimeout(() => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) return;
+      const selectedText = sel.toString().trim();
+      if (!selectedText || !el) return;
+
+      const range = sel.getRangeAt(0);
+      if (!el.contains(range.commonAncestorContainer)) return;
+
+      // Compute offsets against the element's full textContent
+      const preRange = document.createRange();
+      preRange.selectNodeContents(el);
+      preRange.setEnd(range.startContainer, range.startOffset);
+      const startOffset = preRange.toString().length;
+      const endOffset   = startOffset + sel.toString().length;
+
+      const rect = range.getBoundingClientRect();
+      setPopup({
+        selectedText,
+        startOffset,
+        endOffset,
+        position: { x: rect.left + rect.width / 2, y: rect.top },
+      });
+    }, 10);
   }, []);
 
-  // ── Highlight creation ───────────────────────────────────
   const handleHighlightCreate = useCallback(async (colorId) => {
     if (!popup || !selectedArticle || !colorId) {
       setPopup(null);
@@ -63,64 +91,39 @@ export default function ArticleReader() {
     setPopup(null);
   }, [popup, selectedArticle, createHighlight]);
 
-  // ── Text selection → show popup ──────────────────────────
-  const handleMouseUp = useCallback((e) => {
-    // Capture currentTarget BEFORE setTimeout (it's nullified after event ends)
-    const container = e.currentTarget;
-    setTimeout(() => {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed) return;
-      const selectedText = sel.toString().trim();
-      if (!selectedText) return;
-
-      const range = sel.getRangeAt(0);
-      if (!container || !container.contains(range.commonAncestorContainer)) return;
-
-      const preRange = document.createRange();
-      preRange.selectNodeContents(container);
-      preRange.setEnd(range.startContainer, range.startOffset);
-      const startOffset = preRange.toString().length;
-      const endOffset   = startOffset + sel.toString().length;
-
-      const rect = range.getBoundingClientRect();
-      setPopup({
-        selectedText,
-        startOffset,
-        endOffset,
-        position: { x: rect.left + rect.width / 2, y: rect.top },
-      });
-    }, 10);
-  }, []);
-
-  // ── Keyboard shortcuts ───────────────────────────────────
+  // Keyboard shortcuts — execCommand works on the contentEditable div
   useEffect(() => {
     const handler = (e) => {
       if (!selectedArticle) return;
       const ctrl = e.ctrlKey || e.metaKey;
       if (!ctrl) return;
-
       switch (e.key.toLowerCase()) {
         case 'z':
-          if (!e.shiftKey) { e.preventDefault(); document.execCommand('undo'); }
-          else { e.preventDefault(); document.execCommand('redo'); }
+          e.preventDefault();
+          document.execCommand(e.shiftKey ? 'redo' : 'undo');
           break;
         case 'y':
-          e.preventDefault(); document.execCommand('redo');
+          e.preventDefault();
+          document.execCommand('redo');
           break;
         case 'b':
-          e.preventDefault(); document.execCommand('bold');
+          e.preventDefault();
+          document.execCommand('bold');
           break;
         case 'i':
-          e.preventDefault(); document.execCommand('italic');
+          e.preventDefault();
+          document.execCommand('italic');
           break;
         case 'u':
-          e.preventDefault(); document.execCommand('underline');
+          e.preventDefault();
+          document.execCommand('underline');
           break;
         case 's':
           if (e.shiftKey) { e.preventDefault(); document.execCommand('strikeThrough'); }
           break;
         case 'x':
-          e.preventDefault(); document.execCommand('cut');
+          e.preventDefault();
+          document.execCommand('cut');
           break;
         default: break;
       }
@@ -129,29 +132,12 @@ export default function ArticleReader() {
     return () => document.removeEventListener('keydown', handler);
   }, [selectedArticle]);
 
-  // ── All hooks done — early return AFTER all hooks ────────
+  // ── Early return AFTER all hooks ─────────────────────────
   if (!selectedArticle) return <EmptyReader />;
 
-  const folder = selectedArticle.folderId ? getFolderById(selectedArticle.folderId) : null;
-
-  // Build highlight segments against plaintext
-  const plainText = selectedArticle.content || '';
-  const sorted = [...highlights].sort((a, b) => a.startOffset - b.startOffset);
-  const nonOverlapping = [];
-  let lastEnd = 0;
-  for (const h of sorted) {
-    if (h.startOffset >= lastEnd) { nonOverlapping.push(h); lastEnd = h.endOffset; }
-  }
-  const segments = [];
-  let cursor = 0;
-  for (const h of nonOverlapping) {
-    const s = Math.max(0, h.startOffset);
-    const e2 = Math.min(plainText.length, h.endOffset);
-    if (s > cursor) segments.push({ text: plainText.slice(cursor, s), hl: null });
-    if (e2 > s) segments.push({ text: plainText.slice(s, e2), hl: h });
-    cursor = e2;
-  }
-  if (cursor < plainText.length) segments.push({ text: plainText.slice(cursor), hl: null });
+  const folder = selectedArticle.folderId
+    ? getFolderById(selectedArticle.folderId)
+    : null;
 
   const handleDelete = async () => {
     if (!confirm('Delete this article? This cannot be undone.')) return;
@@ -180,8 +166,14 @@ export default function ArticleReader() {
               <ChevronLeft size={16} />
             </button>
             <div className="text-xs flex items-center gap-2" style={{ color: 'var(--text-muted,#64748b)' }}>
-              {folder && <span className="flex items-center gap-1"><Folder size={11} />{folder.name}</span>}
-              <span className="flex items-center gap-1"><Clock size={11} />{formatDate(selectedArticle.updatedAt)}</span>
+              {folder && (
+                <span className="flex items-center gap-1">
+                  <Folder size={11} />{folder.name}
+                </span>
+              )}
+              <span className="flex items-center gap-1">
+                <Clock size={11} />{formatDate(selectedArticle.updatedAt)}
+              </span>
             </div>
           </div>
 
@@ -189,9 +181,12 @@ export default function ArticleReader() {
             {/* Font size */}
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg mr-1"
               style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <button onClick={() => setFontSize((s) => Math.max(12, s - 1))} style={{ color: 'var(--text-muted,#9da4d4)' }}><Minus size={11} /></button>
-              <span className="text-xs font-mono w-6 text-center" style={{ color: 'var(--text-muted,#9da4d4)' }}>{fontSize}</span>
-              <button onClick={() => setFontSize((s) => Math.min(22, s + 1))} style={{ color: 'var(--text-muted,#9da4d4)' }}><Plus size={11} /></button>
+              <button onClick={() => setFontSize((s) => Math.max(12, s - 1))}
+                style={{ color: 'var(--text-muted,#9da4d4)' }}><Minus size={11} /></button>
+              <span className="text-xs font-mono w-6 text-center"
+                style={{ color: 'var(--text-muted,#9da4d4)' }}>{fontSize}</span>
+              <button onClick={() => setFontSize((s) => Math.min(22, s + 1))}
+                style={{ color: 'var(--text-muted,#9da4d4)' }}><Plus size={11} /></button>
             </div>
 
             {/* Highlights toggle */}
@@ -212,14 +207,16 @@ export default function ArticleReader() {
         </div>
 
         {/* Scrollable content */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin" onScroll={handleScroll}>
+        <div className="flex-1 overflow-y-auto scrollbar-thin" onScroll={handleScroll}>
           <div className="max-w-2xl mx-auto px-8 py-10">
 
+            {/* Title */}
             <h1 className="font-bold font-display leading-tight mb-3"
               style={{ fontSize: fontSize + 12, color: 'var(--text-primary,#e8eaf6)' }}>
               {selectedArticle.title || 'Untitled'}
             </h1>
 
+            {/* Tags */}
             {selectedArticle.tags?.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-6">
                 {selectedArticle.tags.map((tag) => <Tag key={tag} label={tag} />)}
@@ -229,100 +226,49 @@ export default function ArticleReader() {
             <hr style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.07))', marginBottom: '2rem' }} />
 
             {/*
-              APPROACH: single contentEditable div that renders highlighted
-              plain-text segments. The user reads the content with highlights
-              visible. Bold/italic/underline/strikethrough work via execCommand
-              on this div. No overlay, no ghost text.
-
-              For rich reading view, we render ReactMarkdown BELOW (non-editable)
-              and the highlight-aware plain text ABOVE it.
-              
-              Actually the cleanest approach: render only formatted markdown,
-              and overlay highlights using a separate mechanism.
-              
-              FINAL CLEAN APPROACH:
-              - Render ReactMarkdown for reading (prose styles)
-              - For highlighting: use a contentEditable div that mirrors the
-                content with colored marks. Selection fires popup.
-              - NO transparent overlay — that caused ghost text.
-              - The contentEditable div IS the reading surface.
+              Single unified view:
+              - dangerouslySetInnerHTML renders markdown as formatted HTML
+                with highlight <mark> spans already injected by renderWithHighlights()
+              - contentEditable=true enables text selection → popup, and execCommand
+                for bold/italic/underline/strikethrough
+              - No separate plain-text layer, no overlay, no ghost text
+              - prose-dark gives all the heading/paragraph/code styles
             */}
             <div
+              ref={contentRef}
               className="prose-dark outline-none"
-              style={{ fontSize, lineHeight: 1.85, color: 'var(--text-primary, #e8eaf6)', caretColor: 'var(--accent, #5b8dee)' }}
               contentEditable
               suppressContentEditableWarning
               onMouseUp={handleMouseUp}
               spellCheck={false}
-              data-article-id={selectedArticle.id}
-            >
-              {/*
-                Render highlight segments as inline spans with mark backgrounds.
-                Non-highlighted text renders normally.
-                The entire div is editable so execCommand works on selections.
-              */}
-              {segments.length > 0 && nonOverlapping.length > 0
-                ? segments.map((seg, i) => {
-                  if (!seg.hl) {
-                    // Non-highlighted: render as plain text span
-                    return (
-                      <span key={i} style={{ whiteSpace: 'pre-wrap' }}>
-                        {seg.text}
-                      </span>
-                    );
-                  }
-                  const c = highlightColors[seg.hl.color];
-                  if (!c) return <span key={i} style={{ whiteSpace: 'pre-wrap' }}>{seg.text}</span>;
-                  return (
-                    <mark
-                      key={i}
-                      ref={(el) => { if (el) markRefs.current[seg.hl.id] = el; }}
-                      style={{
-                        background: c.bg,
-                        borderBottom: `2px solid ${c.border}`,
-                        color: 'inherit',
-                        borderRadius: '2px',
-                        padding: '0 2px',
-                        boxShadow: scrollToId === seg.hl.id ? `0 0 0 2px ${c.dot}` : 'none',
-                        transition: 'box-shadow 0.3s',
-                      }}
-                    >
-                      {seg.text}
-                    </mark>
-                  );
-                })
-                : (
-                  // No highlights yet — just render the plain text
-                  // so execCommand works for formatting
-                  <span style={{ whiteSpace: 'pre-wrap' }}>{plainText}</span>
-                )
-              }
-            </div>
-
-            {/* Formatted markdown view below the editable area */}
-            <div className="prose-dark mt-8 pt-6 border-t pointer-events-none select-none"
-              style={{ borderColor: 'var(--sidebar-border, rgba(255,255,255,0.06))', fontSize }}>
-              <p className="text-[10px] font-mono uppercase tracking-widest mb-4"
-                style={{ color: 'var(--text-muted,#64748b)' }}>Formatted preview</p>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {selectedArticle.content || ''}
-              </ReactMarkdown>
-            </div>
+              style={{
+                fontSize,
+                lineHeight: 1.85,
+                color: 'var(--text-primary, #e8eaf6)',
+                caretColor: 'var(--accent, #5b8dee)',
+                minHeight: '4rem',
+              }}
+              dangerouslySetInnerHTML={{ __html: renderedHTML }}
+            />
 
             <div className="h-20" />
           </div>
         </div>
       </div>
 
-      {/* Highlight panel — FIX #6: X close button */}
+      {/* Highlight panel with X close */}
       {showHighlightPanel && (
         <div className="w-72 flex-shrink-0 border-l h-full animate-fade-in flex flex-col"
           style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))', background: 'rgba(13,15,26,0.97)' }}>
           <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
             style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
             <div>
-              <h3 className="text-sm font-semibold font-display" style={{ color: 'var(--text-primary,#e8eaf6)' }}>Highlights</h3>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted,#64748b)' }}>{highlights.length} total</p>
+              <h3 className="text-sm font-semibold font-display" style={{ color: 'var(--text-primary,#e8eaf6)' }}>
+                Highlights
+              </h3>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted,#64748b)' }}>
+                {highlights.length} total
+              </p>
             </div>
             <button onClick={() => setShowHighlightPanel(false)}
               className="w-7 h-7 flex items-center justify-center rounded-lg transition-all hover:bg-white/10"
@@ -331,7 +277,10 @@ export default function ArticleReader() {
             </button>
           </div>
           <div className="flex-1 overflow-hidden">
-            <HighlightSidebar onJumpTo={handleJumpTo} showHeader={false} />
+            <HighlightSidebar onJumpTo={(id) => {
+              const el = contentRef.current?.querySelector(`[data-highlight-id="${id}"]`);
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }} showHeader={false} />
           </div>
         </div>
       )}
@@ -353,11 +302,18 @@ function EmptyReader() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center p-12 h-full animate-fade-in">
       <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
-        style={{ background: 'linear-gradient(135deg, rgba(91,141,238,0.1), rgba(155,109,255,0.1))', border: '1px solid rgba(91,141,238,0.15)' }}>
+        style={{
+          background: 'linear-gradient(135deg, rgba(91,141,238,0.1), rgba(155,109,255,0.1))',
+          border: '1px solid rgba(91,141,238,0.15)',
+        }}>
         <span className="text-4xl">📖</span>
       </div>
-      <h3 className="font-semibold text-lg mb-2 font-display" style={{ color: 'var(--text-secondary,#c5c9e8)' }}>Select an article</h3>
-      <p className="text-sm max-w-xs leading-relaxed" style={{ color: 'var(--text-muted,#64748b)' }}>Choose an article to read, or create a new one.</p>
+      <h3 className="font-semibold text-lg mb-2 font-display" style={{ color: 'var(--text-secondary,#c5c9e8)' }}>
+        Select an article
+      </h3>
+      <p className="text-sm max-w-xs leading-relaxed" style={{ color: 'var(--text-muted,#64748b)' }}>
+        Choose an article to read, or create a new one.
+      </p>
     </div>
   );
 }
