@@ -15,19 +15,23 @@ export default function ArticleReader() {
   const {
     selectedArticle, setSelectedArticle, deleteArticle,
     getFolderById, openArticleModal, highlights, createHighlight,
-    highlightColors, highlightColorOrder,
+    highlightColors,
   } = useStore();
 
-  // ── All hooks unconditionally at top ──────────────────────
   const [deleting, setDeleting]                     = useState(false);
   const [showHighlightPanel, setShowHighlightPanel] = useState(false);
   const [popup, setPopup]                           = useState(null);
   const [readProgress, setReadProgress]             = useState(0);
   const [fontSize, setFontSize]                     = useState(15);
   const [lastColor, setLastColor]                   = useState('yellow');
-  const contentRef = useRef(null);
 
-  // Memoize rendered HTML so it only recomputes when article or highlights change
+  const contentRef   = useRef(null);
+  // Track whether a popup is active — if so, block re-renders of the content div
+  const popupActiveRef = useRef(false);
+  // Store the last rendered HTML so we can keep it stable during selection
+  const stableHTMLRef  = useRef('');
+
+  // Compute rendered HTML — but only apply it to the DOM when no popup is showing
   const renderedHTML = useMemo(() => {
     if (!selectedArticle) return '';
     return renderWithHighlights(
@@ -37,17 +41,28 @@ export default function ArticleReader() {
     );
   }, [selectedArticle?.id, selectedArticle?.content, highlights, highlightColors]);
 
+  // Apply HTML to DOM manually — skip if popup is active to preserve selection
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    if (popupActiveRef.current) {
+      // Popup is open — don't touch the DOM, selection must stay
+      return;
+    }
+    stableHTMLRef.current = renderedHTML;
+    el.innerHTML = renderedHTML;
+  }, [renderedHTML]);
+
   const handleScroll = useCallback((e) => {
     const el = e.currentTarget;
     const total = el.scrollHeight - el.clientHeight;
     setReadProgress(total > 0 ? Math.round((el.scrollTop / total) * 100) : 0);
   }, []);
 
-  // Text selection → show popup
   const handleMouseUp = useCallback(() => {
-    // Use setTimeout so selection is finalized; capture ref before
     const el = contentRef.current;
-    setTimeout(() => {
+    // Use requestAnimationFrame — fires after browser finalizes selection paint
+    requestAnimationFrame(() => {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed) return;
       const selectedText = sel.toString().trim();
@@ -56,7 +71,6 @@ export default function ArticleReader() {
       const range = sel.getRangeAt(0);
       if (!el.contains(range.commonAncestorContainer)) return;
 
-      // Compute offsets against the element's full textContent
       const preRange = document.createRange();
       preRange.selectNodeContents(el);
       preRange.setEnd(range.startContainer, range.startOffset);
@@ -64,34 +78,50 @@ export default function ArticleReader() {
       const endOffset   = startOffset + sel.toString().length;
 
       const rect = range.getBoundingClientRect();
+
+      // Mark popup as active BEFORE setting state — prevents DOM re-render
+      popupActiveRef.current = true;
+
       setPopup({
         selectedText,
         startOffset,
         endOffset,
         position: { x: rect.left + rect.width / 2, y: rect.top },
       });
-    }, 10);
+    });
+  }, []);
+
+  const closePopup = useCallback(() => {
+    popupActiveRef.current = false;
+    setPopup(null);
+    window.getSelection()?.removeAllRanges();
+    // Now safe to re-apply latest HTML
+    if (contentRef.current) {
+      contentRef.current.innerHTML = stableHTMLRef.current;
+    }
   }, []);
 
   const handleHighlightCreate = useCallback(async (colorId) => {
     if (!popup || !selectedArticle || !colorId) {
-      setPopup(null);
-      window.getSelection()?.removeAllRanges();
+      closePopup();
       return;
     }
     setLastColor(colorId);
+    // Close popup first (clears popupActiveRef) then create — which triggers re-render with new mark
+    const savedPopup = popup;
+    popupActiveRef.current = false;
+    setPopup(null);
+    window.getSelection()?.removeAllRanges();
     await createHighlight({
       articleId: selectedArticle.id,
-      selectedText: popup.selectedText,
+      selectedText: savedPopup.selectedText,
       color: colorId,
-      startOffset: popup.startOffset,
-      endOffset: popup.endOffset,
+      startOffset: savedPopup.startOffset,
+      endOffset: savedPopup.endOffset,
     });
-    window.getSelection()?.removeAllRanges();
-    setPopup(null);
-  }, [popup, selectedArticle, createHighlight]);
+  }, [popup, selectedArticle, createHighlight, closePopup]);
 
-  // Keyboard shortcuts — execCommand works on the contentEditable div
+  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e) => {
       if (!selectedArticle) return;
@@ -132,12 +162,9 @@ export default function ArticleReader() {
     return () => document.removeEventListener('keydown', handler);
   }, [selectedArticle]);
 
-  // ── Early return AFTER all hooks ─────────────────────────
   if (!selectedArticle) return <EmptyReader />;
 
-  const folder = selectedArticle.folderId
-    ? getFolderById(selectedArticle.folderId)
-    : null;
+  const folder = selectedArticle.folderId ? getFolderById(selectedArticle.folderId) : null;
 
   const handleDelete = async () => {
     if (!confirm('Delete this article? This cannot be undone.')) return;
@@ -166,30 +193,19 @@ export default function ArticleReader() {
               <ChevronLeft size={16} />
             </button>
             <div className="text-xs flex items-center gap-2" style={{ color: 'var(--text-muted,#64748b)' }}>
-              {folder && (
-                <span className="flex items-center gap-1">
-                  <Folder size={11} />{folder.name}
-                </span>
-              )}
-              <span className="flex items-center gap-1">
-                <Clock size={11} />{formatDate(selectedArticle.updatedAt)}
-              </span>
+              {folder && <span className="flex items-center gap-1"><Folder size={11} />{folder.name}</span>}
+              <span className="flex items-center gap-1"><Clock size={11} />{formatDate(selectedArticle.updatedAt)}</span>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5">
-            {/* Font size */}
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg mr-1"
               style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <button onClick={() => setFontSize((s) => Math.max(12, s - 1))}
-                style={{ color: 'var(--text-muted,#9da4d4)' }}><Minus size={11} /></button>
-              <span className="text-xs font-mono w-6 text-center"
-                style={{ color: 'var(--text-muted,#9da4d4)' }}>{fontSize}</span>
-              <button onClick={() => setFontSize((s) => Math.min(22, s + 1))}
-                style={{ color: 'var(--text-muted,#9da4d4)' }}><Plus size={11} /></button>
+              <button onClick={() => setFontSize((s) => Math.max(12, s - 1))} style={{ color: 'var(--text-muted,#9da4d4)' }}><Minus size={11} /></button>
+              <span className="text-xs font-mono w-6 text-center" style={{ color: 'var(--text-muted,#9da4d4)' }}>{fontSize}</span>
+              <button onClick={() => setFontSize((s) => Math.min(22, s + 1))} style={{ color: 'var(--text-muted,#9da4d4)' }}><Plus size={11} /></button>
             </div>
 
-            {/* Highlights toggle */}
             <button onClick={() => setShowHighlightPanel((v) => !v)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all"
               style={showHighlightPanel
@@ -206,17 +222,15 @@ export default function ArticleReader() {
           </div>
         </div>
 
-        {/* Scrollable content */}
+        {/* Content */}
         <div className="flex-1 overflow-y-auto scrollbar-thin" onScroll={handleScroll}>
           <div className="max-w-2xl mx-auto px-8 py-10">
 
-            {/* Title */}
             <h1 className="font-bold font-display leading-tight mb-3"
               style={{ fontSize: fontSize + 12, color: 'var(--text-primary,#e8eaf6)' }}>
               {selectedArticle.title || 'Untitled'}
             </h1>
 
-            {/* Tags */}
             {selectedArticle.tags?.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-6">
                 {selectedArticle.tags.map((tag) => <Tag key={tag} label={tag} />)}
@@ -226,13 +240,10 @@ export default function ArticleReader() {
             <hr style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.07))', marginBottom: '2rem' }} />
 
             {/*
-              Single unified view:
-              - dangerouslySetInnerHTML renders markdown as formatted HTML
-                with highlight <mark> spans already injected by renderWithHighlights()
-              - contentEditable=true enables text selection → popup, and execCommand
-                for bold/italic/underline/strikethrough
-              - No separate plain-text layer, no overlay, no ghost text
-              - prose-dark gives all the heading/paragraph/code styles
+              Key design:
+              - innerHTML set manually via useEffect (not dangerouslySetInnerHTML)
+              - popupActiveRef blocks DOM updates while selection is active
+              - This prevents the re-render that was destroying the selection
             */}
             <div
               ref={contentRef}
@@ -244,11 +255,10 @@ export default function ArticleReader() {
               style={{
                 fontSize,
                 lineHeight: 1.85,
-                color: 'var(--text-primary, #e8eaf6)',
-                caretColor: 'var(--accent, #5b8dee)',
+                color: 'var(--text-primary,#e8eaf6)',
+                caretColor: 'var(--accent,#5b8dee)',
                 minHeight: '4rem',
               }}
-              dangerouslySetInnerHTML={{ __html: renderedHTML }}
             />
 
             <div className="h-20" />
@@ -256,19 +266,15 @@ export default function ArticleReader() {
         </div>
       </div>
 
-      {/* Highlight panel with X close */}
+      {/* Highlight panel */}
       {showHighlightPanel && (
         <div className="w-72 flex-shrink-0 border-l h-full animate-fade-in flex flex-col"
           style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))', background: 'rgba(13,15,26,0.97)' }}>
           <div className="flex items-center justify-between px-4 py-3 border-b flex-shrink-0"
             style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.06))' }}>
             <div>
-              <h3 className="text-sm font-semibold font-display" style={{ color: 'var(--text-primary,#e8eaf6)' }}>
-                Highlights
-              </h3>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted,#64748b)' }}>
-                {highlights.length} total
-              </p>
+              <h3 className="text-sm font-semibold font-display" style={{ color: 'var(--text-primary,#e8eaf6)' }}>Highlights</h3>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted,#64748b)' }}>{highlights.length} total</p>
             </div>
             <button onClick={() => setShowHighlightPanel(false)}
               className="w-7 h-7 flex items-center justify-center rounded-lg transition-all hover:bg-white/10"
@@ -277,20 +283,23 @@ export default function ArticleReader() {
             </button>
           </div>
           <div className="flex-1 overflow-hidden">
-            <HighlightSidebar onJumpTo={(id) => {
-              const el = contentRef.current?.querySelector(`[data-highlight-id="${id}"]`);
-              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            }} showHeader={false} />
+            <HighlightSidebar
+              onJumpTo={(id) => {
+                const el = contentRef.current?.querySelector(`[data-highlight-id="${id}"]`);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }}
+              showHeader={false}
+            />
           </div>
         </div>
       )}
 
-      {/* Highlight popup */}
+      {/* Popup */}
       {popup && (
         <HighlightPopup
           position={popup.position}
           onSelect={handleHighlightCreate}
-          onClose={() => { setPopup(null); window.getSelection()?.removeAllRanges(); }}
+          onClose={closePopup}
           selectedColor={lastColor}
         />
       )}
@@ -302,18 +311,11 @@ function EmptyReader() {
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center p-12 h-full animate-fade-in">
       <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-6"
-        style={{
-          background: 'linear-gradient(135deg, rgba(91,141,238,0.1), rgba(155,109,255,0.1))',
-          border: '1px solid rgba(91,141,238,0.15)',
-        }}>
+        style={{ background: 'linear-gradient(135deg, rgba(91,141,238,0.1), rgba(155,109,255,0.1))', border: '1px solid rgba(91,141,238,0.15)' }}>
         <span className="text-4xl">📖</span>
       </div>
-      <h3 className="font-semibold text-lg mb-2 font-display" style={{ color: 'var(--text-secondary,#c5c9e8)' }}>
-        Select an article
-      </h3>
-      <p className="text-sm max-w-xs leading-relaxed" style={{ color: 'var(--text-muted,#64748b)' }}>
-        Choose an article to read, or create a new one.
-      </p>
+      <h3 className="font-semibold text-lg mb-2 font-display" style={{ color: 'var(--text-secondary,#c5c9e8)' }}>Select an article</h3>
+      <p className="text-sm max-w-xs leading-relaxed" style={{ color: 'var(--text-muted,#64748b)' }}>Choose an article to read, or create a new one.</p>
     </div>
   );
 }
