@@ -120,3 +120,44 @@
 [style*="--text-primary: #0f172a"] .prose-dark strong { color: #0f172a !important; }
 [style*="--text-primary: #0f172a"] .prose-dark th { background: rgba(0,0,0,0.06) !important; color: #1e293b !important; }
 [style*="--text-primary: #0f172a"] .prose-dark td { border-color: rgba(0,0,0,0.1) !important; color: #334155 !important; }
+
+/* ── Light mode reader overrides ───────────────────────────── */
+/* Applied when --text-primary is set to a dark color (light theme) */
+[style*="--text-primary: #0f172a"] .prose-dark,
+[style*="--text-primary:#0f172a"] .prose-dark {
+  color: #1e293b;
+}
+[style*="--text-primary: #0f172a"] [contenteditable],
+[style*="--text-primary:#0f172a"] [contenteditable] {
+  color: #1e293b !important;
+  caret-color: #3b6fd4 !important;
+}
+[style*="--text-primary: #0f172a"] .prose-dark h1,
+[style*="--text-primary: #0f172a"] .prose-dark h2,
+[style*="--text-primary: #0f172a"] .prose-dark h3,
+[style*="--text-primary: #0f172a"] .prose-dark h4 { color: #0f172a !important; }
+[style*="--text-primary: #0f172a"] .prose-dark p,
+[style*="--text-primary: #0f172a"] .prose-dark li { color: #334155 !important; }
+[style*="--text-primary: #0f172a"] .prose-dark strong { color: #0f172a !important; }
+[style*="--text-primary: #0f172a"] .prose-dark a { color: #3b6fd4 !important; }
+[style*="--text-primary: #0f172a"] .prose-dark code {
+  background: rgba(0,0,0,0.07) !important;
+  color: #1d4ed8 !important;
+}
+[style*="--text-primary: #0f172a"] .prose-dark pre {
+  background: rgba(0,0,0,0.05) !important;
+  border-color: rgba(0,0,0,0.12) !important;
+}
+[style*="--text-primary: #0f172a"] .prose-dark pre code { color: #1e293b !important; }
+[style*="--text-primary: #0f172a"] .prose-dark blockquote {
+  border-color: #7c3aed !important;
+  color: #475569 !important;
+}
+[style*="--text-primary: #0f172a"] .prose-dark hr { border-color: rgba(0,0,0,0.12) !important; }
+[style*="--text-primary: #0f172a"] .prose-dark th { background: rgba(0,0,0,0.06) !important; color: #1e293b !important; }
+[style*="--text-primary: #0f172a"] .prose-dark td { color: #334155 !important; border-color: rgba(0,0,0,0.1) !important; }
+
+/* Light mode: article card text */
+[style*="--text-primary: #0f172a"] [style*="--card-bg"] {
+  background: rgba(0,0,0,0.04) !important;
+}

@@ -65,17 +65,16 @@ export default function ArticleReader() {
 
   // ── Text selection → show popup ──────────────────────────
   const handleMouseUp = useCallback((e) => {
-    // Small delay so selection is finalized
+    // Capture currentTarget BEFORE setTimeout (it's nullified after event ends)
+    const container = e.currentTarget;
     setTimeout(() => {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed) return;
       const selectedText = sel.toString().trim();
       if (!selectedText) return;
 
-      // Get offset within the article content element
       const range = sel.getRangeAt(0);
-      const container = e.currentTarget;
-      if (!container.contains(range.commonAncestorContainer)) return;
+      if (!container || !container.contains(range.commonAncestorContainer)) return;
 
       const preRange = document.createRange();
       preRange.selectNodeContents(container);
@@ -250,7 +249,7 @@ export default function ArticleReader() {
             */}
             <div
               className="prose-dark outline-none"
-              style={{ fontSize, lineHeight: 1.85 }}
+              style={{ fontSize, lineHeight: 1.85, color: 'var(--text-primary, #e8eaf6)', caretColor: 'var(--accent, #5b8dee)' }}
               contentEditable
               suppressContentEditableWarning
               onMouseUp={handleMouseUp}
@@ -302,7 +301,7 @@ export default function ArticleReader() {
 
             {/* Formatted markdown view below the editable area */}
             <div className="prose-dark mt-8 pt-6 border-t pointer-events-none select-none"
-              style={{ borderColor: 'rgba(255,255,255,0.06)', fontSize }}>
+              style={{ borderColor: 'var(--sidebar-border, rgba(255,255,255,0.06))', fontSize }}>
               <p className="text-[10px] font-mono uppercase tracking-widest mb-4"
                 style={{ color: 'var(--text-muted,#64748b)' }}>Formatted preview</p>
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
