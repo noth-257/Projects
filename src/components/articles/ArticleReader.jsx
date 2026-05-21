@@ -11,6 +11,24 @@ import { renderWithHighlights } from '../../utils/renderWithHighlights';
 import HighlightPopup from '../reader/HighlightPopup';
 import HighlightSidebar from '../reader/HighlightSidebar';
 
+// ── Toast notification ────────────────────────────────────────
+function Toast({ message }) {
+  if (!message) return null;
+  return (
+    <div
+      className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] px-5 py-2.5 rounded-2xl text-sm font-medium animate-fade-in pointer-events-none"
+      style={{
+        background: 'linear-gradient(135deg, rgba(18,21,42,0.98), rgba(12,14,28,0.98))',
+        border: '1px solid rgba(255,255,255,0.15)',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+        color: '#e8eaf6',
+      }}
+    >
+      {message}
+    </div>
+  );
+}
+
 export default function ArticleReader() {
   const {
     selectedArticle, setSelectedArticle, deleteArticle,
@@ -24,14 +42,23 @@ export default function ArticleReader() {
   const [readProgress, setReadProgress]             = useState(0);
   const [fontSize, setFontSize]                     = useState(15);
   const [lastColor, setLastColor]                   = useState('yellow');
+  const [toast, setToast]                           = useState('');
 
-  const contentRef   = useRef(null);
-  // Track whether a popup is active — if so, block re-renders of the content div
+  const contentRef     = useRef(null);
   const popupActiveRef = useRef(false);
-  // Store the last rendered HTML so we can keep it stable during selection
-  const stableHTMLRef  = useRef('');
+  // FIX #1: Store the CURRENT innerHTML of the content div (including any
+  // execCommand changes like bold/italic), not just the initial rendered HTML.
+  // We update this ref after every DOM mutation so closePopup restores correctly.
+  const currentHTMLRef = useRef('');
+  const toastTimerRef  = useRef(null);
 
-  // Compute rendered HTML — but only apply it to the DOM when no popup is showing
+  const showToast = useCallback((msg) => {
+    setToast(msg);
+    clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(''), 1200);
+  }, []);
+
+  // Rendered HTML from markdown + highlights
   const renderedHTML = useMemo(() => {
     if (!selectedArticle) return '';
     return renderWithHighlights(
@@ -41,17 +68,28 @@ export default function ArticleReader() {
     );
   }, [selectedArticle?.id, selectedArticle?.content, highlights, highlightColors]);
 
-  // Apply HTML to DOM manually — skip if popup is active to preserve selection
+  // Apply HTML to DOM — skip while popup is open to preserve selection
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el || popupActiveRef.current) return;
+    el.innerHTML = renderedHTML;
+    currentHTMLRef.current = renderedHTML;
+  }, [renderedHTML]);
+
+  // MutationObserver: keep currentHTMLRef in sync with any DOM changes
+  // (execCommand bold/italic modifies the DOM directly)
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
-    if (popupActiveRef.current) {
-      // Popup is open — don't touch the DOM, selection must stay
-      return;
-    }
-    stableHTMLRef.current = renderedHTML;
-    el.innerHTML = renderedHTML;
-  }, [renderedHTML]);
+    const obs = new MutationObserver(() => {
+      // Only update when popup is NOT active (no selection in progress)
+      if (!popupActiveRef.current) {
+        currentHTMLRef.current = el.innerHTML;
+      }
+    });
+    obs.observe(el, { childList: true, subtree: true, characterData: true, attributes: true });
+    return () => obs.disconnect();
+  }, []);
 
   const handleScroll = useCallback((e) => {
     const el = e.currentTarget;
@@ -61,7 +99,6 @@ export default function ArticleReader() {
 
   const handleMouseUp = useCallback(() => {
     const el = contentRef.current;
-    // Use requestAnimationFrame — fires after browser finalizes selection paint
     requestAnimationFrame(() => {
       const sel = window.getSelection();
       if (!sel || sel.isCollapsed) return;
@@ -78,10 +115,7 @@ export default function ArticleReader() {
       const endOffset   = startOffset + sel.toString().length;
 
       const rect = range.getBoundingClientRect();
-
-      // Mark popup as active BEFORE setting state — prevents DOM re-render
       popupActiveRef.current = true;
-
       setPopup({
         selectedText,
         startOffset,
@@ -91,15 +125,56 @@ export default function ArticleReader() {
     });
   }, []);
 
+  // FIX #1: closePopup restores currentHTMLRef (which includes bold/italic changes),
+  // NOT the original renderedHTML. This preserves execCommand formatting.
   const closePopup = useCallback(() => {
     popupActiveRef.current = false;
     setPopup(null);
     window.getSelection()?.removeAllRanges();
-    // Now safe to re-apply latest HTML
+    // Restore the current state of the DOM (with any formatting applied)
     if (contentRef.current) {
-      contentRef.current.innerHTML = stableHTMLRef.current;
+      contentRef.current.innerHTML = currentHTMLRef.current;
     }
   }, []);
+
+  // FIX #3: Format and auto-deselect
+  const applyFormat = useCallback((cmd) => {
+    // execCommand needs the selection to still be active — run it first
+    document.execCommand(cmd, false, null);
+    // Update currentHTMLRef immediately after formatting
+    if (contentRef.current) {
+      currentHTMLRef.current = contentRef.current.innerHTML;
+    }
+    // Then clear selection and close popup
+    window.getSelection()?.removeAllRanges();
+    popupActiveRef.current = false;
+    setPopup(null);
+  }, []);
+
+  // FIX #3: Cut/copy/paste with toast notification
+  const applyClipboard = useCallback((action) => {
+    if (action === 'cut') {
+      document.execCommand('cut');
+      if (contentRef.current) currentHTMLRef.current = contentRef.current.innerHTML;
+      showToast('✂️ Cut');
+    } else if (action === 'copy') {
+      document.execCommand('copy');
+      showToast('📋 Copied');
+    } else if (action === 'paste') {
+      navigator.clipboard.readText().then((text) => {
+        document.execCommand('insertText', false, text);
+        if (contentRef.current) currentHTMLRef.current = contentRef.current.innerHTML;
+        showToast('📌 Pasted');
+      }).catch(() => {
+        document.execCommand('paste');
+        showToast('📌 Pasted');
+      });
+    }
+    // Deselect after clipboard action
+    window.getSelection()?.removeAllRanges();
+    popupActiveRef.current = false;
+    setPopup(null);
+  }, [showToast]);
 
   const handleHighlightCreate = useCallback(async (colorId) => {
     if (!popup || !selectedArticle || !colorId) {
@@ -107,7 +182,6 @@ export default function ArticleReader() {
       return;
     }
     setLastColor(colorId);
-    // Close popup first (clears popupActiveRef) then create — which triggers re-render with new mark
     const savedPopup = popup;
     popupActiveRef.current = false;
     setPopup(null);
@@ -128,39 +202,20 @@ export default function ArticleReader() {
       const ctrl = e.ctrlKey || e.metaKey;
       if (!ctrl) return;
       switch (e.key.toLowerCase()) {
-        case 'z':
-          e.preventDefault();
-          document.execCommand(e.shiftKey ? 'redo' : 'undo');
-          break;
-        case 'y':
-          e.preventDefault();
-          document.execCommand('redo');
-          break;
-        case 'b':
-          e.preventDefault();
-          document.execCommand('bold');
-          break;
-        case 'i':
-          e.preventDefault();
-          document.execCommand('italic');
-          break;
-        case 'u':
-          e.preventDefault();
-          document.execCommand('underline');
-          break;
-        case 's':
-          if (e.shiftKey) { e.preventDefault(); document.execCommand('strikeThrough'); }
-          break;
-        case 'x':
-          e.preventDefault();
-          document.execCommand('cut');
-          break;
+        case 'z': e.preventDefault(); document.execCommand(e.shiftKey ? 'redo' : 'undo'); break;
+        case 'y': e.preventDefault(); document.execCommand('redo'); break;
+        case 'b': e.preventDefault(); applyFormat('bold'); break;
+        case 'i': e.preventDefault(); applyFormat('italic'); break;
+        case 'u': e.preventDefault(); applyFormat('underline'); break;
+        case 's': if (e.shiftKey) { e.preventDefault(); applyFormat('strikeThrough'); } break;
+        case 'x': e.preventDefault(); applyClipboard('cut'); break;
+        case 'c': e.preventDefault(); applyClipboard('copy'); break;
         default: break;
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [selectedArticle]);
+  }, [selectedArticle, applyFormat, applyClipboard]);
 
   if (!selectedArticle) return <EmptyReader />;
 
@@ -205,7 +260,6 @@ export default function ArticleReader() {
               <span className="text-xs font-mono w-6 text-center" style={{ color: 'var(--text-muted,#9da4d4)' }}>{fontSize}</span>
               <button onClick={() => setFontSize((s) => Math.min(22, s + 1))} style={{ color: 'var(--text-muted,#9da4d4)' }}><Plus size={11} /></button>
             </div>
-
             <button onClick={() => setShowHighlightPanel((v) => !v)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-all"
               style={showHighlightPanel
@@ -214,7 +268,6 @@ export default function ArticleReader() {
               <Highlighter size={13} />
               {highlights.length > 0 && <span>{highlights.length}</span>}
             </button>
-
             <Button variant="ghost" size="sm" icon={<Edit3 size={13} />}
               onClick={() => openArticleModal(selectedArticle)}>Edit</Button>
             <Button variant="danger" size="sm" icon={<Trash2 size={13} />}
@@ -225,26 +278,16 @@ export default function ArticleReader() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto scrollbar-thin" onScroll={handleScroll}>
           <div className="max-w-2xl mx-auto px-8 py-10">
-
             <h1 className="font-bold font-display leading-tight mb-3"
               style={{ fontSize: fontSize + 12, color: 'var(--text-primary,#e8eaf6)' }}>
               {selectedArticle.title || 'Untitled'}
             </h1>
-
             {selectedArticle.tags?.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-6">
                 {selectedArticle.tags.map((tag) => <Tag key={tag} label={tag} />)}
               </div>
             )}
-
             <hr style={{ borderColor: 'var(--sidebar-border,rgba(255,255,255,0.07))', marginBottom: '2rem' }} />
-
-            {/*
-              Key design:
-              - innerHTML set manually via useEffect (not dangerouslySetInnerHTML)
-              - popupActiveRef blocks DOM updates while selection is active
-              - This prevents the re-render that was destroying the selection
-            */}
             <div
               ref={contentRef}
               className="prose-dark outline-none"
@@ -260,7 +303,6 @@ export default function ArticleReader() {
                 minHeight: '4rem',
               }}
             />
-
             <div className="h-20" />
           </div>
         </div>
@@ -278,9 +320,7 @@ export default function ArticleReader() {
             </div>
             <button onClick={() => setShowHighlightPanel(false)}
               className="w-7 h-7 flex items-center justify-center rounded-lg transition-all hover:bg-white/10"
-              style={{ color: 'var(--text-muted,#64748b)' }} title="Close">
-              <X size={15} />
-            </button>
+              style={{ color: 'var(--text-muted,#64748b)' }}><X size={15} /></button>
           </div>
           <div className="flex-1 overflow-hidden">
             <HighlightSidebar
@@ -300,9 +340,14 @@ export default function ArticleReader() {
           position={popup.position}
           onSelect={handleHighlightCreate}
           onClose={closePopup}
+          onFormat={applyFormat}
+          onClipboard={applyClipboard}
           selectedColor={lastColor}
         />
       )}
+
+      {/* Toast */}
+      <Toast message={toast} />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Scissors, Copy, Clipboard, ChevronDown } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 
-export default function HighlightPopup({ position, onSelect, onClose, selectedColor }) {
+export default function HighlightPopup({ position, onSelect, onClose, onFormat, onClipboard, selectedColor }) {
   const ref = useRef(null);
   const { highlightColors, highlightColorOrder } = useStore();
 
@@ -18,12 +18,7 @@ export default function HighlightPopup({ position, onSelect, onClose, selectedCo
     ? highlightColors[selectedColor]
     : Object.values(highlightColors)[0];
 
-  const sep = (
-    <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />
-  );
-
-  // execCommand wrappers — work on the contentEditable element that has focus+selection
-  const fmt = (cmd) => { document.execCommand(cmd, false, null); };
+  const sep = <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />;
 
   return (
     <div
@@ -35,41 +30,29 @@ export default function HighlightPopup({ position, onSelect, onClose, selectedCo
         transform: 'translateX(-50%)',
         background: 'linear-gradient(135deg, rgba(18,21,42,0.99), rgba(12,14,28,0.99))',
         border: '1px solid rgba(255,255,255,0.14)',
-        boxShadow: '0 12px 40px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.04)',
+        boxShadow: '0 12px 40px rgba(0,0,0,0.75)',
       }}
     >
       {/* Caret */}
       <div className="absolute left-1/2 -bottom-[7px] -translate-x-1/2 w-3 h-3 rotate-45"
-        style={{
-          background: 'rgba(12,14,28,0.99)',
-          borderRight: '1px solid rgba(255,255,255,0.14)',
-          borderBottom: '1px solid rgba(255,255,255,0.14)',
-        }} />
+        style={{ background: 'rgba(12,14,28,0.99)', borderRight: '1px solid rgba(255,255,255,0.14)', borderBottom: '1px solid rgba(255,255,255,0.14)' }} />
 
-      {/* B I U S */}
-      <FmtBtn label="B" title="Bold (Ctrl+B)"          style={{ fontWeight: 700 }}                                onClick={() => fmt('bold')} />
-      <FmtBtn label="I" title="Italic (Ctrl+I)"         style={{ fontStyle: 'italic' }}                           onClick={() => fmt('italic')} />
-      <FmtBtn label="U" title="Underline (Ctrl+U)"      style={{ textDecoration: 'underline' }}                   onClick={() => fmt('underline')} />
-      <FmtBtn label="S" title="Strikethrough (Ctrl+⇧+S)" style={{ textDecoration: 'line-through' }}              onClick={() => fmt('strikeThrough')} />
+      {/* B I U S — onMouseDown so selection stays when clicked */}
+      <FmtBtn label="B" title="Bold (Ctrl+B)"              fmtStyle={{ fontWeight: 700 }}                      onMouseDown={() => onFormat?.('bold')} />
+      <FmtBtn label="I" title="Italic (Ctrl+I)"            fmtStyle={{ fontStyle: 'italic' }}                  onMouseDown={() => onFormat?.('italic')} />
+      <FmtBtn label="U" title="Underline (Ctrl+U)"         fmtStyle={{ textDecoration: 'underline' }}          onMouseDown={() => onFormat?.('underline')} />
+      <FmtBtn label="S" title="Strikethrough (Ctrl+⇧+S)"  fmtStyle={{ textDecoration: 'line-through' }}       onMouseDown={() => onFormat?.('strikeThrough')} />
 
       {sep}
 
-      {/* Cut / Copy / Paste — using execCommand so they work on the contentEditable */}
-      <IcnBtn icon={<Scissors size={13} />} title="Cut (Ctrl+X)"    onClick={() => fmt('cut')} />
-      <IcnBtn icon={<Copy size={13} />}     title="Copy (Ctrl+C)"   onClick={() => fmt('copy')} />
-      <IcnBtn icon={<Clipboard size={13} />} title="Paste (Ctrl+V)" onClick={() => {
-        // Paste requires clipboard API — execCommand paste is deprecated in some browsers
-        navigator.clipboard.readText().then((text) => {
-          document.execCommand('insertText', false, text);
-        }).catch(() => {
-          // Fallback: let browser handle it
-          document.execCommand('paste', false, null);
-        });
-      }} />
+      {/* Cut / Copy / Paste */}
+      <IcnBtn icon={<Scissors size={13} />} title="Cut (Ctrl+X)"   onMouseDown={() => onClipboard?.('cut')} />
+      <IcnBtn icon={<Copy size={13} />}     title="Copy (Ctrl+C)"  onMouseDown={() => onClipboard?.('copy')} />
+      <IcnBtn icon={<Clipboard size={13} />} title="Paste (Ctrl+V)" onMouseDown={() => onClipboard?.('paste')} />
 
       {sep}
 
-      {/* Highlight color picker */}
+      {/* Color picker */}
       <ColorPicker
         activeColor={activeColor}
         highlightColors={highlightColors}
@@ -80,17 +63,13 @@ export default function HighlightPopup({ position, onSelect, onClose, selectedCo
   );
 }
 
-function FmtBtn({ label, title, style = {}, onClick }) {
+function FmtBtn({ label, title, fmtStyle = {}, onMouseDown }) {
   return (
     <button
-      onMouseDown={(e) => {
-        // Prevent blur so selection is preserved when button is clicked
-        e.preventDefault();
-        onClick();
-      }}
+      onMouseDown={(e) => { e.preventDefault(); onMouseDown(); }}
       title={title}
       className="w-7 h-7 flex items-center justify-center rounded-lg text-sm leading-none transition-all"
-      style={{ color: 'rgba(255,255,255,0.85)', ...style }}
+      style={{ color: 'rgba(255,255,255,0.85)', ...fmtStyle }}
       onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.12)'}
       onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
     >
@@ -99,10 +78,10 @@ function FmtBtn({ label, title, style = {}, onClick }) {
   );
 }
 
-function IcnBtn({ icon, title, onClick }) {
+function IcnBtn({ icon, title, onMouseDown }) {
   return (
     <button
-      onMouseDown={(e) => { e.preventDefault(); onClick(); }}
+      onMouseDown={(e) => { e.preventDefault(); onMouseDown(); }}
       title={title}
       className="w-7 h-7 flex items-center justify-center rounded-lg transition-all"
       style={{ color: 'rgba(255,255,255,0.65)' }}
@@ -136,10 +115,7 @@ function ColorPicker({ activeColor, highlightColors, highlightColorOrder, onSele
         title="Highlight color"
       >
         <span className="w-4 h-4 rounded-full flex-shrink-0"
-          style={{
-            background: activeColor?.dot || '#fde047',
-            boxShadow: `0 0 8px ${activeColor?.dot || '#fde047'}80`,
-          }} />
+          style={{ background: activeColor?.dot || '#fde047', boxShadow: `0 0 8px ${activeColor?.dot || '#fde047'}80` }} />
         <ChevronDown size={10} style={{ transform: open ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.15s' }} />
       </button>
 
@@ -179,8 +155,7 @@ function ColorPicker({ activeColor, highlightColors, highlightColorOrder, onSele
             onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'rgba(255,255,255,0.7)'; }}
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.4)'; }}
           >
-            <span className="w-3 h-3 rounded-full border flex-shrink-0"
-              style={{ borderColor: 'rgba(255,255,255,0.3)' }} />
+            <span className="w-3 h-3 rounded-full border flex-shrink-0" style={{ borderColor: 'rgba(255,255,255,0.3)' }} />
             Remove highlight
           </button>
         </div>
