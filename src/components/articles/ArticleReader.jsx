@@ -201,15 +201,37 @@ export default function ArticleReader() {
       if (!selectedArticle) return;
       const ctrl = e.ctrlKey || e.metaKey;
       if (!ctrl) return;
+      const sel = window.getSelection();
+      const hasSel = sel && !sel.isCollapsed && sel.toString().trim().length > 0;
+
       switch (e.key.toLowerCase()) {
-        case 'z': e.preventDefault(); document.execCommand(e.shiftKey ? 'redo' : 'undo'); break;
-        case 'y': e.preventDefault(); document.execCommand('redo'); break;
-        case 'b': e.preventDefault(); applyFormat('bold'); break;
-        case 'i': e.preventDefault(); applyFormat('italic'); break;
-        case 'u': e.preventDefault(); applyFormat('underline'); break;
-        case 's': if (e.shiftKey) { e.preventDefault(); applyFormat('strikeThrough'); } break;
-        case 'x': e.preventDefault(); applyClipboard('cut'); break;
-        case 'c': e.preventDefault(); applyClipboard('copy'); break;
+        case 'z':
+          e.preventDefault();
+          document.execCommand(e.shiftKey ? 'redo' : 'undo');
+          break;
+        case 'y':
+          e.preventDefault();
+          document.execCommand('redo');
+          break;
+        case 'b':
+          e.preventDefault();
+          document.execCommand('bold');
+          break;
+        case 'i':
+          e.preventDefault();
+          document.execCommand('italic');
+          break;
+        case 'u':
+          e.preventDefault();
+          document.execCommand('underline');
+          break;
+        case 's':
+          if (e.shiftKey) { e.preventDefault(); document.execCommand('strikeThrough'); }
+          break;
+        case 'x':
+          e.preventDefault();
+          document.execCommand('cut');
+          break;
         default: break;
       }
     };
