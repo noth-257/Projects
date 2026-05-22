@@ -127,6 +127,9 @@ export default function ArticleReader() {
       if (!selectedArticle) return;
       const ctrl = e.ctrlKey || e.metaKey;
       if (!ctrl) return;
+      const sel = window.getSelection();
+      const hasSel = sel && !sel.isCollapsed && sel.toString().trim().length > 0;
+
       switch (e.key.toLowerCase()) {
         case 'z':
           e.preventDefault();
@@ -137,23 +140,27 @@ export default function ArticleReader() {
           document.execCommand('redo');
           break;
         case 'b':
-          e.preventDefault();
-          document.execCommand('bold');
+          if (hasSel) { e.preventDefault(); document.execCommand('bold'); }
           break;
         case 'i':
-          e.preventDefault();
-          document.execCommand('italic');
+          if (hasSel) { e.preventDefault(); document.execCommand('italic'); }
           break;
         case 'u':
-          e.preventDefault();
-          document.execCommand('underline');
+          if (hasSel) { e.preventDefault(); document.execCommand('underline'); }
           break;
         case 's':
-          if (e.shiftKey) { e.preventDefault(); document.execCommand('strikeThrough'); }
+          if (e.shiftKey && hasSel) { e.preventDefault(); document.execCommand('strikeThrough'); }
           break;
         case 'x':
+          // Fix 2: only cut if there's a selection
+          if (hasSel) { e.preventDefault(); document.execCommand('cut'); }
+          break;
+        case 'v':
+          // Fix 1: Ctrl+V paste via clipboard API
           e.preventDefault();
-          document.execCommand('cut');
+          navigator.clipboard.readText()
+            .then((text) => document.execCommand('insertText', false, text))
+            .catch(() => document.execCommand('paste', false, null));
           break;
         default: break;
       }

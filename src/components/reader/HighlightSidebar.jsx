@@ -69,8 +69,8 @@ export default function HighlightSidebar({ onJumpTo, showHeader = true }) {
                 onClick={() => setCollapsed((s) => ({ ...s, [colorId]: !s[colorId] }))}
                 className="flex items-center gap-2 w-full mb-2 group">
                 <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: c.dot }} />
-                <span className="text-xs font-semibold flex-1 text-left transition-colors group-hover:text-white"
-                  style={{ color: 'var(--text-secondary,#c5c9e8)' }}>
+                <span className="text-xs font-semibold flex-1 text-left transition-colors group-hover:opacity-80"
+                  style={{ color: '#e8eaf6' }}>
                   {c.label}
                 </span>
                 <span className="text-[10px] font-mono" style={{ color: 'var(--text-muted,#64748b)' }}>
@@ -109,7 +109,7 @@ function HighlightCard({ highlight, color, highlightColors, highlightColorOrder,
       className="group rounded-xl p-3 cursor-pointer transition-all duration-150"
       style={{ background: color.bg, border: `1px solid ${color.border}` }}
       onClick={onJump}>
-      <p className="text-xs leading-relaxed line-clamp-3 mb-2" style={{ color: 'var(--text-primary,#e8eaf6)' }}>
+      <p className="text-xs leading-relaxed line-clamp-3 mb-2" style={{ color: '#e8eaf6' }}>
         "{highlight.selectedText}"
       </p>
       <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
