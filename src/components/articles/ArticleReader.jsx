@@ -214,23 +214,26 @@ export default function ArticleReader() {
           document.execCommand('redo');
           break;
         case 'b':
-          e.preventDefault();
-          document.execCommand('bold');
+          if (hasSel) { e.preventDefault(); document.execCommand('bold'); }
           break;
         case 'i':
-          e.preventDefault();
-          document.execCommand('italic');
+          if (hasSel) { e.preventDefault(); document.execCommand('italic'); }
           break;
         case 'u':
-          e.preventDefault();
-          document.execCommand('underline');
+          if (hasSel) { e.preventDefault(); document.execCommand('underline'); }
           break;
         case 's':
-          if (e.shiftKey) { e.preventDefault(); document.execCommand('strikeThrough'); }
+          if (e.shiftKey && hasSel) { e.preventDefault(); document.execCommand('strikeThrough'); }
           break;
         case 'x':
+          if (hasSel) { e.preventDefault(); applyClipboard('cut'); }
+          break;
+        case 'c':
+          if (hasSel) applyClipboard('copy');
+          break;
+        case 'v':
           e.preventDefault();
-          document.execCommand('cut');
+          applyClipboard('paste');
           break;
         default: break;
       }

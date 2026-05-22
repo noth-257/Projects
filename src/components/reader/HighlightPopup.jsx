@@ -2,17 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Scissors, Copy, Clipboard, ChevronDown } from 'lucide-react';
 import { useStore } from '../../store/useStore';
 
-<<<<<<< HEAD
 export default function HighlightPopup({ position, onSelect, onClose, onFormat, onClipboard, selectedColor }) {
-=======
-/**
- * HighlightPopup
- * Fix 1: Ctrl+V paste works via keyboard shortcut in ArticleReader
- * Fix 2: buttons only act if there's an active selection
- * Fix 4: color picker opens ABOVE or BELOW depending on space available
- */
-export default function HighlightPopup({ position, onSelect, onClose, selectedColor }) {
->>>>>>> 1fd049f5840ace3fc79d0b05a726c7125afd9052
   const ref = useRef(null);
   const { highlightColors, highlightColorOrder } = useStore();
 
@@ -28,28 +18,18 @@ export default function HighlightPopup({ position, onSelect, onClose, selectedCo
     ? highlightColors[selectedColor]
     : Object.values(highlightColors)[0];
 
-<<<<<<< HEAD
-  const sep = <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />;
-=======
+  // Fix 2: only act if there's an active selection
   const hasSelection = () => {
     const sel = window.getSelection();
     return sel && !sel.isCollapsed && sel.toString().trim().length > 0;
   };
 
-  const fmt = (cmd) => {
-    // Fix 2: only execute if there's an active selection
-    if (!hasSelection() && ['cut', 'copy'].includes(cmd)) return;
-    document.execCommand(cmd, false, null);
-  };
-
   const sep = <div style={{ width: '1px', height: '18px', background: 'rgba(255,255,255,0.12)', flexShrink: 0 }} />;
 
-  // Fix 4: position popup below text if it would go off-screen at top
+  // Fix 4: flip popup below text if near top of screen
   const spaceAbove = position.y;
-  const popupHeight = 52;
-  const showBelow = spaceAbove < popupHeight + 20;
-  const topPos = showBelow ? position.y + 28 : position.y - 60;
->>>>>>> 1fd049f5840ace3fc79d0b05a726c7125afd9052
+  const showBelow  = spaceAbove < 80;
+  const topPos     = showBelow ? position.y + 30 : position.y - 60;
 
   return (
     <div
@@ -64,80 +44,49 @@ export default function HighlightPopup({ position, onSelect, onClose, selectedCo
         boxShadow: '0 12px 40px rgba(0,0,0,0.75)',
       }}
     >
-<<<<<<< HEAD
       {/* Caret */}
-      <div className="absolute left-1/2 -bottom-[7px] -translate-x-1/2 w-3 h-3 rotate-45"
-        style={{ background: 'rgba(12,14,28,0.99)', borderRight: '1px solid rgba(255,255,255,0.14)', borderBottom: '1px solid rgba(255,255,255,0.14)' }} />
-
-      {/* B I U S — onMouseDown so selection stays when clicked */}
-      <FmtBtn label="B" title="Bold (Ctrl+B)"              fmtStyle={{ fontWeight: 700 }}                      onMouseDown={() => onFormat?.('bold')} />
-      <FmtBtn label="I" title="Italic (Ctrl+I)"            fmtStyle={{ fontStyle: 'italic' }}                  onMouseDown={() => onFormat?.('italic')} />
-      <FmtBtn label="U" title="Underline (Ctrl+U)"         fmtStyle={{ textDecoration: 'underline' }}          onMouseDown={() => onFormat?.('underline')} />
-      <FmtBtn label="S" title="Strikethrough (Ctrl+⇧+S)"  fmtStyle={{ textDecoration: 'line-through' }}       onMouseDown={() => onFormat?.('strikeThrough')} />
-=======
-      {/* Caret — points toward text */}
       <div className="absolute left-1/2 -translate-x-1/2 w-3 h-3 rotate-45"
         style={{
           [showBelow ? 'top' : 'bottom']: '-7px',
           background: 'rgba(12,14,28,0.99)',
           borderRight: showBelow ? 'none' : '1px solid rgba(255,255,255,0.14)',
           borderBottom: showBelow ? 'none' : '1px solid rgba(255,255,255,0.14)',
-          borderLeft: showBelow ? '1px solid rgba(255,255,255,0.14)' : 'none',
-          borderTop: showBelow ? '1px solid rgba(255,255,255,0.14)' : 'none',
+          borderLeft:  showBelow ? '1px solid rgba(255,255,255,0.14)' : 'none',
+          borderTop:   showBelow ? '1px solid rgba(255,255,255,0.14)' : 'none',
         }} />
 
       {/* B I U S */}
-      <FmtBtn label="B" title="Bold (Ctrl+B)"             style={{ fontWeight: 700 }}              onMouseDown={() => fmt('bold')} />
-      <FmtBtn label="I" title="Italic (Ctrl+I)"            style={{ fontStyle: 'italic' }}          onMouseDown={() => fmt('italic')} />
-      <FmtBtn label="U" title="Underline (Ctrl+U)"         style={{ textDecoration: 'underline' }}  onMouseDown={() => fmt('underline')} />
-      <FmtBtn label="S" title="Strikethrough (Ctrl+Shift+S)" style={{ textDecoration: 'line-through' }} onMouseDown={() => fmt('strikeThrough')} />
->>>>>>> 1fd049f5840ace3fc79d0b05a726c7125afd9052
+      <FmtBtn label="B" title="Bold (Ctrl+B)"             fmtStyle={{ fontWeight: 700 }}              onMouseDown={() => onFormat?.('bold')} />
+      <FmtBtn label="I" title="Italic (Ctrl+I)"            fmtStyle={{ fontStyle: 'italic' }}          onMouseDown={() => onFormat?.('italic')} />
+      <FmtBtn label="U" title="Underline (Ctrl+U)"         fmtStyle={{ textDecoration: 'underline' }}  onMouseDown={() => onFormat?.('underline')} />
+      <FmtBtn label="S" title="Strikethrough (Ctrl+⇧+S)"  fmtStyle={{ textDecoration: 'line-through' }} onMouseDown={() => onFormat?.('strikeThrough')} />
 
       {sep}
 
-      {/* Cut / Copy / Paste */}
-<<<<<<< HEAD
-      <IcnBtn icon={<Scissors size={13} />} title="Cut (Ctrl+X)"   onMouseDown={() => onClipboard?.('cut')} />
-      <IcnBtn icon={<Copy size={13} />}     title="Copy (Ctrl+C)"  onMouseDown={() => onClipboard?.('copy')} />
-      <IcnBtn icon={<Clipboard size={13} />} title="Paste (Ctrl+V)" onMouseDown={() => onClipboard?.('paste')} />
-
-      {sep}
-
-      {/* Color picker */}
-=======
+      {/* Fix 2: cut/copy only fire when selection exists */}
       <IcnBtn icon={<Scissors size={13} />} title="Cut (Ctrl+X)"
-        onMouseDown={() => fmt('cut')} />
+        onMouseDown={() => { if (hasSelection()) onClipboard?.('cut'); }} />
       <IcnBtn icon={<Copy size={13} />} title="Copy (Ctrl+C)"
-        onMouseDown={() => fmt('copy')} />
-      {/* Fix 1: Paste uses clipboard API */}
+        onMouseDown={() => { if (hasSelection()) onClipboard?.('copy'); }} />
+      {/* Fix 1: paste always available */}
       <IcnBtn icon={<Clipboard size={13} />} title="Paste (Ctrl+V)"
-        onMouseDown={() => {
-          navigator.clipboard.readText()
-            .then((text) => document.execCommand('insertText', false, text))
-            .catch(() => document.execCommand('paste', false, null));
-        }} />
+        onMouseDown={() => onClipboard?.('paste')} />
 
       {sep}
 
-      {/* Highlight color picker — Fix 4: smart positioning */}
->>>>>>> 1fd049f5840ace3fc79d0b05a726c7125afd9052
+      {/* Fix 4: smart-position color picker */}
       <ColorPicker
         activeColor={activeColor}
         highlightColors={highlightColors}
         highlightColorOrder={highlightColorOrder}
         onSelect={onSelect}
-        spaceAbove={spaceAbove}
         showBelow={showBelow}
       />
     </div>
   );
 }
 
-<<<<<<< HEAD
 function FmtBtn({ label, title, fmtStyle = {}, onMouseDown }) {
-=======
-function FmtBtn({ label, title, style = {}, onMouseDown }) {
->>>>>>> 1fd049f5840ace3fc79d0b05a726c7125afd9052
   return (
     <button
       onMouseDown={(e) => { e.preventDefault(); onMouseDown(); }}
@@ -178,8 +127,8 @@ function ColorPicker({ activeColor, highlightColors, highlightColorOrder, onSele
     return () => document.removeEventListener('mousedown', h);
   }, [open]);
 
-  // Fix 4: dropdown opens in direction with more space
-  const dropdownStyle = showBelow
+  // Fix 4: open dropdown toward whichever side has more room
+  const dropdownPos = showBelow
     ? { top: 'calc(100% + 6px)', bottom: 'auto' }
     : { bottom: 'calc(100% + 6px)', top: 'auto' };
 
@@ -202,7 +151,7 @@ function ColorPicker({ activeColor, highlightColors, highlightColorOrder, onSele
         <div
           className="absolute right-0 p-1.5 rounded-2xl flex flex-col gap-0.5 animate-scale-in"
           style={{
-            ...dropdownStyle,
+            ...dropdownPos,
             background: 'linear-gradient(135deg, rgba(18,21,42,0.99), rgba(12,14,28,0.99))',
             border: '1px solid rgba(255,255,255,0.14)',
             boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
