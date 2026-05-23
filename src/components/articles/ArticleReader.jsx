@@ -10,6 +10,7 @@ import { formatDate } from '../../utils/helpers';
 import { renderWithHighlights } from '../../utils/renderWithHighlights';
 import HighlightPopup from '../reader/HighlightPopup';
 import HighlightSidebar from '../reader/HighlightSidebar';
+import ConfirmModal from '../ui/ConfirmModal';
 
 // ── Toast notification ────────────────────────────────────────
 function Toast({ message }) {
@@ -37,6 +38,7 @@ export default function ArticleReader() {
   } = useStore();
 
   const [deleting, setDeleting]                     = useState(false);
+  const [confirmState, setConfirmState]             = useState(null);
   const [showHighlightPanel, setShowHighlightPanel] = useState(false);
   const [popup, setPopup]                           = useState(null);
   const [readProgress, setReadProgress]             = useState(0);
@@ -150,19 +152,32 @@ export default function ArticleReader() {
     }
   }, []);
 
-  // FIX #3: Format and auto-deselect
+  // Format from popup button — clears selection and closes popup after
   const applyFormat = useCallback((cmd) => {
-    // execCommand needs the selection to still be active — run it first
     document.execCommand(cmd, false, null);
-    // Update currentHTMLRef immediately after formatting
     if (contentRef.current) {
       currentHTMLRef.current = contentRef.current.innerHTML;
+      // Immediately save so formatting persists on reload
+      clearTimeout(saveTimerRef.current);
+      saveFormattedContent(selectedArticle.id, contentRef.current.innerHTML);
     }
-    // Then clear selection and close popup
     window.getSelection()?.removeAllRanges();
     popupActiveRef.current = false;
     setPopup(null);
-  }, []);
+  }, [selectedArticle?.id, saveFormattedContent]);
+
+  // Format from keyboard — keeps selection active so user can keep typing
+  // FIX 2: save immediately so formatting persists even if user clicks elsewhere
+  const applyFormatKeyboard = useCallback((cmd) => {
+    document.execCommand(cmd, false, null);
+    if (contentRef.current) {
+      currentHTMLRef.current = contentRef.current.innerHTML;
+      // Save immediately — don't wait for debounce
+      clearTimeout(saveTimerRef.current);
+      saveFormattedContent(selectedArticle.id, contentRef.current.innerHTML);
+    }
+    // Do NOT clear selection — user may want to keep formatting
+  }, [selectedArticle?.id, saveFormattedContent]);
 
   const applyClipboard = useCallback((action) => {
     if (action === 'cut') {
@@ -242,16 +257,16 @@ export default function ArticleReader() {
           document.execCommand('redo');
           break;
         case 'b':
-          if (hasSel) { e.preventDefault(); document.execCommand('bold'); }
+          if (hasSel) { e.preventDefault(); applyFormatKeyboard('bold'); }
           break;
         case 'i':
-          if (hasSel) { e.preventDefault(); document.execCommand('italic'); }
+          if (hasSel) { e.preventDefault(); applyFormatKeyboard('italic'); }
           break;
         case 'u':
-          if (hasSel) { e.preventDefault(); document.execCommand('underline'); }
+          if (hasSel) { e.preventDefault(); applyFormatKeyboard('underline'); }
           break;
         case 's':
-          if (e.shiftKey && hasSel) { e.preventDefault(); document.execCommand('strikeThrough'); }
+          if (e.shiftKey && hasSel) { e.preventDefault(); applyFormatKeyboard('strikeThrough'); }
           break;
         case 'x':
           if (hasSel) { e.preventDefault(); applyClipboard('cut'); }
@@ -268,17 +283,24 @@ export default function ArticleReader() {
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [selectedArticle, applyFormat, applyClipboard]);
+  }, [selectedArticle, applyFormatKeyboard, applyClipboard]);
 
   if (!selectedArticle) return <EmptyReader />;
 
   const folder = selectedArticle.folderId ? getFolderById(selectedArticle.folderId) : null;
 
-  const handleDelete = async () => {
-    if (!confirm('Delete this article? This cannot be undone.')) return;
-    setDeleting(true);
-    await deleteArticle(selectedArticle.id);
-    setDeleting(false);
+  const handleDelete = () => {
+    setConfirmState({
+      title: 'Delete Article',
+      message: `"${selectedArticle.title || 'Untitled'}" will be permanently deleted. This cannot be undone.`,
+      confirmLabel: 'Delete',
+      danger: true,
+      onConfirm: async () => {
+        setDeleting(true);
+        await deleteArticle(selectedArticle.id);
+        setDeleting(false);
+      },
+    });
   };
 
   return (
@@ -401,6 +423,7 @@ export default function ArticleReader() {
 
       {/* Toast */}
       <Toast message={toast} />
+      <ConfirmModal state={confirmState} onClose={() => setConfirmState(null)} />
     </div>
   );
 }

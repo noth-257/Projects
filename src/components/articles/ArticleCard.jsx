@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Folder, Clock, MoreVertical, Pin, PenLine, FolderInput, Trash2, Download } from 'lucide-react';
 import { useStore } from '../../store/useStore';
+import ConfirmModal from '../ui/ConfirmModal';
 import Tag from '../ui/Tag';
 import { formatDate, getPreviewText } from '../../utils/helpers';
 
@@ -15,6 +16,7 @@ export default function ArticleCard({ article }) {
   const isSelected = selectedArticle?.id === article.id;
   const preview = getPreviewText(article.content);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [confirmState, setConfirmState] = useState(null);
   const [renaming, setRenaming] = useState(false);
   const [renameVal, setRenameVal] = useState(article.title);
   const menuRef = useRef(null);
@@ -73,7 +75,16 @@ export default function ArticleCard({ article }) {
             onRename={() => { setRenaming(true); setMenuOpen(false); }}
             onEdit={() => { openArticleModal(article); setMenuOpen(false); }}
             onExport={() => { exportArticle(article); setMenuOpen(false); }}
-            onDelete={async () => { setMenuOpen(false); if (confirm('Delete this article?')) await deleteArticle(article.id); }}
+            onDelete={() => {
+              setMenuOpen(false);
+              setConfirmState({
+                title: 'Delete Article',
+                message: `"${article.title || 'Untitled'}" will be permanently deleted. This cannot be undone.`,
+                confirmLabel: 'Delete',
+                danger: true,
+                onConfirm: () => deleteArticle(article.id),
+              });
+            }}
             onMoveTo={async (fid) => { setMenuOpen(false); await moveArticleToFolder(article.id, fid); }}
           />
         )}
@@ -112,6 +123,7 @@ export default function ArticleCard({ article }) {
           <span className="flex items-center gap-1 ml-auto"><Clock size={9} />{formatDate(article.updatedAt)}</span>
         </div>
       )}
+      <ConfirmModal state={confirmState} onClose={() => setConfirmState(null)} />
     </article>
   );
 }
