@@ -29,7 +29,6 @@ export default function HighlightPopup({ position, onSelect, onClose, onFormat, 
   // Fix 4: flip popup below text if near top of screen
   const spaceAbove = position.y;
   const showBelow  = spaceAbove < 500;
-  const showBelow  = spaceAbove <200;
   const topPos     = showBelow ? position.y + 30 : position.y - 60;
 
   return (
