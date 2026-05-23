@@ -104,6 +104,18 @@ const useDataStore = create((set, get) => ({
     await get().loadArticles();
     if (get().selectedArticle?.id === id) set({ selectedArticle: await db.articles.get(id) });
   },
+  // Save rich formatted HTML (bold/italic/etc from reader edits) back to DB
+  saveFormattedContent: async (articleId, formattedContent) => {
+    await db.articles.update(articleId, { formattedContent, updatedAt: new Date() });
+    // Update in-place without full reload to avoid disrupting reader
+    const { articles } = get();
+    const updated = articles.map(a => a.id === articleId ? { ...a, formattedContent } : a);
+    set({ articles: updated });
+    if (get().selectedArticle?.id === articleId) {
+      set(s => ({ selectedArticle: { ...s.selectedArticle, formattedContent } }));
+    }
+  },
+
   deleteArticle: async (id) => {
     await db.articles.delete(id);
     await highlightService.deleteByArticle(id);

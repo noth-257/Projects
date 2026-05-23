@@ -23,6 +23,21 @@ db.version(3).stores({
   highlights: '++id, articleId, color, createdAt',
 });
 
+// v4 — articles get formattedContent field (stores rich HTML from reader edits)
+db.version(4).stores({
+  folders:    '++id, name, parentId, createdAt, updatedAt',
+  articles:   '++id, title, folderId, createdAt, updatedAt, *tags',
+  tags:       '++id, name, color',
+  highlights: '++id, articleId, color, createdAt',
+}).upgrade(tx => {
+  // No data migration needed — formattedContent starts as null for existing articles
+  return tx.table('articles').toCollection().modify(article => {
+    if (article.formattedContent === undefined) {
+      article.formattedContent = null;
+    }
+  });
+});
+
 db.on('populate', async () => {
   const folderId = await db.folders.add({
     name: 'Getting Started', parentId: null, createdAt: new Date(), updatedAt: new Date(),

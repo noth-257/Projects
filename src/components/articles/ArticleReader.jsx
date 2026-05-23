@@ -32,7 +32,7 @@ function Toast({ message }) {
 export default function ArticleReader() {
   const {
     selectedArticle, setSelectedArticle, deleteArticle,
-    getFolderById, openArticleModal, highlights, createHighlight,
+    getFolderById, openArticleModal, highlights, createHighlight, saveFormattedContent,
     highlightColors,
   } = useStore();
 
@@ -51,6 +51,7 @@ export default function ArticleReader() {
   // We update this ref after every DOM mutation so closePopup restores correctly.
   const currentHTMLRef = useRef('');
   const toastTimerRef  = useRef(null);
+  const saveTimerRef   = useRef(null);
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -68,13 +69,15 @@ export default function ArticleReader() {
     );
   }, [selectedArticle?.id, selectedArticle?.content, highlights, highlightColors]);
 
-  // Apply HTML to DOM — skip while popup is open to preserve selection
+  // Apply HTML to DOM — prefer saved formattedContent over fresh markdown render
+  // This ensures bold/italic/underline edits persist across page reloads
   useEffect(() => {
     const el = contentRef.current;
     if (!el || popupActiveRef.current) return;
-    el.innerHTML = renderedHTML;
-    currentHTMLRef.current = renderedHTML;
-  }, [renderedHTML]);
+    const htmlToShow = selectedArticle?.formattedContent || renderedHTML;
+    el.innerHTML = htmlToShow;
+    currentHTMLRef.current = htmlToShow;
+  }, [renderedHTML, selectedArticle?.formattedContent]);
 
   // MutationObserver: keep currentHTMLRef in sync with any DOM changes
   // (execCommand bold/italic modifies the DOM directly)
@@ -85,11 +88,21 @@ export default function ArticleReader() {
       // Only update when popup is NOT active (no selection in progress)
       if (!popupActiveRef.current) {
         currentHTMLRef.current = el.innerHTML;
+        // Debounced auto-save: persist formatted HTML 1.5s after user stops typing
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => {
+          if (selectedArticle) {
+            saveFormattedContent(selectedArticle.id, el.innerHTML);
+          }
+        }, 1500);
       }
     });
     obs.observe(el, { childList: true, subtree: true, characterData: true, attributes: true });
-    return () => obs.disconnect();
-  }, []);
+    return () => {
+      obs.disconnect();
+      clearTimeout(saveTimerRef.current);
+    };
+  }, [selectedArticle?.id]);
 
   const handleScroll = useCallback((e) => {
     const el = e.currentTarget;
