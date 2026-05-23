@@ -32,14 +32,23 @@ export default function HighlightSidebar({ onJumpTo, showHeader = true }) {
     );
   }
 
-  // Group highlights by color, preserving custom color order
+  // Deduplicate by selectedText — keep the most recent highlight for each unique text
+  const seen = new Set();
+  const deduped = [...highlights].reverse().filter(h => {
+    const key = h.selectedText?.trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).reverse();
+
+  // Group deduplicated highlights by color, preserving custom color order
   const grouped = {};
   for (const colorId of highlightColorOrder) {
-    const group = highlights.filter((h) => h.color === colorId);
+    const group = deduped.filter((h) => h.color === colorId);
     if (group.length > 0) grouped[colorId] = group;
   }
   // Also catch highlights with colors not in the order (edge case)
-  for (const h of highlights) {
+  for (const h of deduped) {
     if (!grouped[h.color]) grouped[h.color] = [];
     if (!grouped[h.color].includes(h)) grouped[h.color].push(h);
   }
@@ -52,7 +61,7 @@ export default function HighlightSidebar({ onJumpTo, showHeader = true }) {
             Highlights
           </h3>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted,#64748b)' }}>
-            {highlights.length} total
+            {deduped.length} total
           </p>
         </div>
       )}

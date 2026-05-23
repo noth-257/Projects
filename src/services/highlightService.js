@@ -19,6 +19,17 @@ export const highlightService = {
     await db.highlights.update(id, { color });
     return db.highlights.get(id);
   },
+  // Find all highlights that overlap [startOffset, endOffset) for an article
+  async getOverlapping(articleId, startOffset, endOffset) {
+    const all = await db.highlights.where('articleId').equals(articleId).toArray();
+    return all.filter(h => h.endOffset > startOffset && h.startOffset < endOffset);
+  },
+  // Find highlights with same selectedText (dedup)
+  async getByText(articleId, selectedText) {
+    const all = await db.highlights.where('articleId').equals(articleId).toArray();
+    return all.filter(h => h.selectedText === selectedText);
+  },
+
   async delete(id) {
     return db.highlights.delete(id);
   },

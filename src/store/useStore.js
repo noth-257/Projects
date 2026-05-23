@@ -141,8 +141,33 @@ const useDataStore = create((set, get) => ({
 
   // ── Highlights ────────────────────────────────────────────
   createHighlight: async (payload) => {
+    const { articleId, startOffset, endOffset, selectedText, color } = payload;
+
+    // 1. Delete any existing highlights that overlap this range
+    //    This allows re-highlighting and colour-changes on already-highlighted text
+    const overlapping = await highlightService.getOverlapping(articleId, startOffset, endOffset);
+    for (const existing of overlapping) {
+      await highlightService.delete(existing.id);
+    }
+
+    // 2. Also remove exact-text duplicates (same selectedText in same article)
+    const dupes = await highlightService.getByText(articleId, selectedText);
+    for (const dupe of dupes) {
+      await highlightService.delete(dupe.id);
+    }
+
+    // 3. If colorId is null → user chose "Remove highlight", don't create a new one
+    if (!color) {
+      // Reload highlights without the deleted ones
+      const fresh = await highlightService.getByArticle(articleId);
+      set({ highlights: fresh });
+      return null;
+    }
+
+    // 4. Create the new highlight
     const h = await highlightService.create(payload);
-    set((s) => ({ highlights: [...s.highlights, h].sort((a, b) => a.startOffset - b.startOffset) }));
+    const fresh = await highlightService.getByArticle(articleId);
+    set({ highlights: fresh });
     return h;
   },
   updateHighlightColor: async (id, color) => {

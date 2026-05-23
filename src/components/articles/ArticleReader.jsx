@@ -220,19 +220,21 @@ export default function ArticleReader() {
   }, [showToast]);
 
   const handleHighlightCreate = useCallback(async (colorId) => {
-    if (!popup || !selectedArticle || !colorId) {
+    if (!popup || !selectedArticle) {
       closePopup();
       return;
     }
-    setLastColor(colorId);
+    // colorId === null means "Remove highlight" was selected
+    if (colorId) setLastColor(colorId);
     const savedPopup = popup;
     popupActiveRef.current = false;
     setPopup(null);
     window.getSelection()?.removeAllRanges();
+    // Pass colorId even if null — createHighlight handles removal
     await createHighlight({
       articleId: selectedArticle.id,
       selectedText: savedPopup.selectedText,
-      color: colorId,
+      color: colorId,   // null = remove any overlapping highlight
       startOffset: savedPopup.startOffset,
       endOffset: savedPopup.endOffset,
     });
