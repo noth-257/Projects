@@ -5,6 +5,7 @@ import {
   Highlighter, Download, Upload, FileText, PenLine,
 } from 'lucide-react';
 import { useStore } from '../../store/useStore';
+import ConfirmModal from '../ui/ConfirmModal';
 
 export default function Sidebar() {
   const {
@@ -25,6 +26,7 @@ export default function Sidebar() {
   } = useStore();
 
   const fileRef = useRef(null);
+  const [folderToDelete, setFolderToDelete] = useState(null);
   const handleImport = async (e) => {
     const files = Array.from(e.target.files || []);
     for (const f of files) await importMarkdownFile(f, currentFolderId);
@@ -155,6 +157,7 @@ export default function Sidebar() {
                     onOpenArticles={(id) => { ensureDashboardVisible(); openFolderArticles(id); }}
                     onToggle={toggleFolderExpand}
                     onDelete={deleteFolder}
+                    onRequestDelete={(f) => setFolderToDelete(f)}
                     onRename={renameFolder}
                     onAddChild={(id) => openFolderModal(id)}
                   />
@@ -237,13 +240,23 @@ export default function Sidebar() {
         <input ref={fileRef} type="file" accept=".md" multiple className="hidden" onChange={handleImport} />
         <NavItem icon={<Settings size={14} />} label="Settings" onClick={() => setShowSettings(true)} />
       </div>
+      <ConfirmModal
+        state={folderToDelete ? {
+          title: 'Delete Folder',
+          message: `"${folderToDelete.name}" and all its subfolders will be permanently deleted. Articles inside will be moved to "No folder". This cannot be undone.`,
+          confirmLabel: 'Delete Folder',
+          danger: true,
+          onConfirm: () => deleteFolder(folderToDelete.id),
+        } : null}
+        onClose={() => setFolderToDelete(null)}
+      />
     </aside>
   );
 }
 
 // ── Recursive folder tree ──────────────────────────────────────
 function FolderTree({ folder, depth, currentFolderId, expandedFolders, getChildFolders,
-  getArticleCount, getArticleCountDeep, onBrowse, onOpenArticles, onToggle, onDelete, onRename, onAddChild }) {
+  getArticleCount, getArticleCountDeep, onBrowse, onOpenArticles, onToggle, onDelete, onRequestDelete, onRename, onAddChild }) {
   const children = getChildFolders(folder.id);
   const isActive = currentFolderId === folder.id;
   const isExpanded = !!expandedFolders[folder.id];
@@ -307,7 +320,7 @@ function FolderTree({ folder, depth, currentFolderId, expandedFolders, getChildF
             style={{ color: 'var(--text-muted,#64748b)' }} title="Rename folder"
             onMouseEnter={(e) => e.currentTarget.style.color='var(--accent,#5b8dee)'}
             onMouseLeave={(e) => e.currentTarget.style.color='var(--text-muted,#64748b)'}><PenLine size={11} /></button>
-          <button onClick={(e) => { e.stopPropagation(); onDelete(folder.id); }}
+          <button onClick={(e) => { e.stopPropagation(); onRequestDelete(folder); }}
             className="w-5 h-5 flex items-center justify-center rounded-md hover:text-red-400 transition-colors"
             style={{ color: 'var(--text-muted,#64748b)' }}><Trash2 size={12} /></button>
         </div>
@@ -325,6 +338,7 @@ function FolderTree({ folder, depth, currentFolderId, expandedFolders, getChildF
               getChildFolders={getChildFolders} getArticleCount={getArticleCount}
               onBrowse={onBrowse} onOpenArticles={onOpenArticles}
               getArticleCountDeep={getArticleCountDeep}
+              onRequestDelete={onRequestDelete}
               onToggle={onToggle} onDelete={onDelete} onRename={onRename} onAddChild={onAddChild} />
           ))}
         </div>
