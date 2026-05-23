@@ -151,29 +151,44 @@ export default function ArticleReader() {
     setPopup(null);
   }, []);
 
-  // FIX #3: Cut/copy/paste with toast notification
   const applyClipboard = useCallback((action) => {
     if (action === 'cut') {
+      // Only cut if there's a selection
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) return;
       document.execCommand('cut');
       if (contentRef.current) currentHTMLRef.current = contentRef.current.innerHTML;
       showToast('✂️ Cut');
+      window.getSelection()?.removeAllRanges();
+      popupActiveRef.current = false;
+      setPopup(null);
     } else if (action === 'copy') {
+      // Only copy if there's a selection
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) return;
       document.execCommand('copy');
       showToast('📋 Copied');
+      window.getSelection()?.removeAllRanges();
+      popupActiveRef.current = false;
+      setPopup(null);
     } else if (action === 'paste') {
+      // Paste: only show toast AFTER clipboard read succeeds
       navigator.clipboard.readText().then((text) => {
+        if (!text) return; // nothing to paste — no toast
         document.execCommand('insertText', false, text);
         if (contentRef.current) currentHTMLRef.current = contentRef.current.innerHTML;
         showToast('📌 Pasted');
+        window.getSelection()?.removeAllRanges();
+        popupActiveRef.current = false;
+        setPopup(null);
       }).catch(() => {
+        // Fallback — browser native paste, no toast since we can't confirm it worked
         document.execCommand('paste');
-        showToast('📌 Pasted');
+        window.getSelection()?.removeAllRanges();
+        popupActiveRef.current = false;
+        setPopup(null);
       });
     }
-    // Deselect after clipboard action
-    window.getSelection()?.removeAllRanges();
-    popupActiveRef.current = false;
-    setPopup(null);
   }, [showToast]);
 
   const handleHighlightCreate = useCallback(async (colorId) => {
