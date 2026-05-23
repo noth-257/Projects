@@ -34,7 +34,7 @@ export default function ArticleReader() {
   const {
     selectedArticle, setSelectedArticle, deleteArticle,
     getFolderById, openArticleModal, highlights, createHighlight, saveFormattedContent,
-    highlightColors,
+    highlightColors, sidebarCollapsed, dashboardVisible,
   } = useStore();
 
   const [deleting, setDeleting]                     = useState(false);
@@ -352,7 +352,20 @@ export default function ArticleReader() {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto scrollbar-thin" onScroll={handleScroll}>
-          <div className="max-w-2xl mx-auto px-8 py-10">
+          <div
+            className="mx-auto px-8 py-10 transition-all duration-300"
+            style={{
+              // Expand reading width as panels collapse
+              // Both visible: 672px (max-w-2xl)
+              // Dashboard hidden: 800px (max-w-3xl)
+              // Both hidden: 960px (max-w-5xl-ish)
+              maxWidth: sidebarCollapsed && !dashboardVisible
+                ? '960px'
+                : !dashboardVisible
+                  ? '800px'
+                  : '672px',
+            }}
+          >
             <h1 className="font-bold font-display leading-tight mb-3"
               style={{ fontSize: fontSize + 12, color: 'var(--text-primary,#e8eaf6)' }}>
               {selectedArticle.title || 'Untitled'}
