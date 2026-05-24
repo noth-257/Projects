@@ -18,14 +18,23 @@ export function formatDate(date) {
 export function getPreviewText(markdown, maxLen = 120) {
   if (!markdown) return '';
   const stripped = markdown
-    .replace(/#{1,6}\s+/g, '')
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\*(.+?)\*/g, '$1')
-    .replace(/`{1,3}[^`]*`{1,3}/g, '')
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/>\s+/g, '')
-    .replace(/[-*+]\s+/g, '')
+    .replace(/^---[\s\S]*?---\n/m, '')        // strip frontmatter
+    .replace(/#{1,6}\s+/g, '')                 // headings
+    .replace(/\*\*\*(.+?)\*\*\*/g, '$1')       // bold+italic
+    .replace(/\*\*(.+?)\*\*/g, '$1')           // bold
+    .replace(/\*(.+?)\*/g, '$1')               // italic
+    .replace(/~~(.+?)~~/g, '$1')               // strikethrough
+    .replace(/__(.+?)__/g, '$1')               // underline
+    .replace(/`{3}[\s\S]*?`{3}/g, '')         // code blocks
+    .replace(/`[^`]*`/g, '')                   // inline code
+    .replace(/!?\[([^\]]+)\]\([^)]+\)/g, '$1') // links + images
+    .replace(/^>+\s*/gm, '')                   // blockquotes
+    .replace(/^[-*+]\s+/gm, '')               // unordered list
+    .replace(/^\d+\.\s+/gm, '')              // ordered list
+    .replace(/^[-_*]{3,}$/gm, '')              // horizontal rules
+    .replace(/\|[^\n]+\|/g, '')              // tables
     .replace(/\n+/g, ' ')
+    .replace(/\s{2,}/g, ' ')
     .trim();
   return stripped.length > maxLen ? stripped.slice(0, maxLen) + '…' : stripped;
 }

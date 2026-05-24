@@ -7,7 +7,7 @@ import { useStore } from '../../store/useStore';
 import Tag from '../ui/Tag';
 import Button from '../ui/Button';
 import { formatDate } from '../../utils/helpers';
-import { renderWithHighlights } from '../../utils/renderWithHighlights';
+import { renderWithHighlights, injectMarksIntoHTML } from '../../utils/renderWithHighlights';
 import HighlightPopup from '../reader/HighlightPopup';
 import HighlightSidebar from '../reader/HighlightSidebar';
 import ConfirmModal from '../ui/ConfirmModal';
@@ -72,33 +72,16 @@ export default function ArticleReader() {
   }, [selectedArticle?.id, selectedArticle?.content, highlights, highlightColors]);
 
   // Apply HTML to DOM.
-  // Always use renderedHTML (markdown + injected highlight <mark> spans) so
-  // highlights are ALWAYS visible. formattedContent (user bold/italic edits)
-  // is overlaid only when highlights haven't changed since it was saved.
+  // Prefer formattedContent (has both user bold/italic AND highlight marks baked in).
+  // Fall back to renderedHTML (fresh markdown render with highlights) when no
+  // formattedContent exists yet.
   useEffect(() => {
     const el = contentRef.current;
     if (!el || popupActiveRef.current) return;
-
-    // Use renderedHTML as the authoritative source — it always has current highlights.
-    // If formattedContent exists AND it already contains the same highlight marks
-    // (i.e. no new highlights were added since last save), use it to preserve
-    // bold/italic formatting. Otherwise fall back to fresh renderedHTML.
-    let htmlToShow = renderedHTML;
-    if (selectedArticle?.formattedContent) {
-      // Check if formattedContent has the same highlight IDs as current highlights
-      const currentIds = highlights.map(h => String(h.id)).sort().join(',');
-      const savedIds = (selectedArticle.formattedContent.match(/data-highlight-id="(\d+)"/g) || [])
-        .map(m => m.replace(/data-highlight-id="(\d+)"/, '$1')).sort().join(',');
-      if (currentIds === savedIds) {
-        // Same highlights — safe to use formattedContent (preserves bold/italic)
-        htmlToShow = selectedArticle.formattedContent;
-      }
-      // Otherwise: highlights changed — use fresh renderedHTML (loses bold/italic but shows highlights)
-    }
-
+    const htmlToShow = selectedArticle?.formattedContent || renderedHTML;
     el.innerHTML = htmlToShow;
     currentHTMLRef.current = htmlToShow;
-  }, [renderedHTML, selectedArticle?.formattedContent, highlights]);
+  }, [renderedHTML, selectedArticle?.formattedContent]);
 
   // MutationObserver: keep currentHTMLRef in sync with any DOM changes
   // (execCommand bold/italic modifies the DOM directly)
@@ -113,7 +96,15 @@ export default function ArticleReader() {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = setTimeout(() => {
           if (selectedArticle) {
-            saveFormattedContent(selectedArticle.id, el.innerHTML);
+            // Bake current highlight marks INTO the formatted content before saving.
+            // This ensures formattedContent always has BOTH user formatting (bold/italic)
+            // AND highlight <mark> spans, so neither is lost on reload.
+            const htmlWithHighlights = injectMarksIntoHTML(
+              el.innerHTML,
+              highlights,
+              highlightColors,
+            );
+            saveFormattedContent(selectedArticle.id, htmlWithHighlights);
           }
         }, 1500);
       }
