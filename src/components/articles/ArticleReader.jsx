@@ -72,16 +72,39 @@ export default function ArticleReader() {
   }, [selectedArticle?.id, selectedArticle?.content, highlights, highlightColors]);
 
   // Apply HTML to DOM.
-  // Prefer formattedContent (has both user bold/italic AND highlight marks baked in).
-  // Fall back to renderedHTML (fresh markdown render with highlights) when no
-  // formattedContent exists yet.
+  // renderedHTML always has the LATEST highlights (recomputed on every highlight change).
+  // formattedContent has user bold/italic BUT may have stale highlights.
+  // 
+  // Strategy: compare highlight IDs in formattedContent vs current highlights.
+  // If they match → formattedContent is up to date, use it (preserves bold/italic).
+  // If they differ → highlights changed, use renderedHTML (fresh marks, loses bold/italic).
+  // This guarantees highlights are ALWAYS visible immediately.
   useEffect(() => {
     const el = contentRef.current;
     if (!el || popupActiveRef.current) return;
-    const htmlToShow = selectedArticle?.formattedContent || renderedHTML;
+
+    let htmlToShow = renderedHTML; // default: always has current highlights
+
+    if (selectedArticle?.formattedContent) {
+      const currentIds = new Set(highlights.map(h => String(h.id)));
+      const savedIds   = new Set(
+        [...(selectedArticle.formattedContent.matchAll(/data-highlight-id="(\d+)"/g))]
+          .map(m => m[1])
+      );
+      const sameIds = currentIds.size === savedIds.size &&
+        [...currentIds].every(id => savedIds.has(id));
+
+      if (sameIds) {
+        // formattedContent is in sync with current highlights → safe to use
+        // (preserves bold/italic user formatting)
+        htmlToShow = selectedArticle.formattedContent;
+      }
+      // else: highlights changed since last save → use renderedHTML so new marks show instantly
+    }
+
     el.innerHTML = htmlToShow;
     currentHTMLRef.current = htmlToShow;
-  }, [renderedHTML, selectedArticle?.formattedContent]);
+  }, [renderedHTML, selectedArticle?.formattedContent, highlights]);
 
   // MutationObserver: keep currentHTMLRef in sync with any DOM changes
   // (execCommand bold/italic modifies the DOM directly)
@@ -248,7 +271,21 @@ export default function ArticleReader() {
       startOffset: savedPopup.startOffset,
       endOffset: savedPopup.endOffset,
     });
-  }, [popup, selectedArticle, createHighlight, closePopup]);
+    // Immediately save formattedContent with updated marks so the
+    // ID-comparison in the apply-HTML useEffect finds them in sync.
+    // We use a short delay so the store highlights array has updated first.
+    setTimeout(() => {
+      const el = contentRef.current;
+      if (el && selectedArticle) {
+        const fresh = injectMarksIntoHTML(
+          el.innerHTML,
+          useStore.getState().highlights,
+          useStore.getState().highlightColors,
+        );
+        saveFormattedContent(selectedArticle.id, fresh);
+      }
+    }, 50);
+  }, [popup, selectedArticle, createHighlight, closePopup, saveFormattedContent]);
 
   // Keyboard shortcuts
   useEffect(() => {
