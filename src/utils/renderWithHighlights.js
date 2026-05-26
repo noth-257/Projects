@@ -201,3 +201,20 @@ export function injectMarksIntoHTML(html, highlights, highlightColors) {
 
   return body.innerHTML;
 }
+
+/**
+ * stripHighlightMarks
+ * Removes all <mark data-highlight-id> spans from HTML, keeping their text content.
+ * Used before saving formattedContent so it stores ONLY user formatting.
+ */
+export function stripHighlightMarks(html) {
+  if (!html) return html;
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  doc.body.querySelectorAll('mark[data-highlight-id]').forEach(mark => {
+    const parent = mark.parentNode;
+    while (mark.firstChild) parent.insertBefore(mark.firstChild, mark);
+    parent.removeChild(mark);
+  });
+  return doc.body.innerHTML;
+}

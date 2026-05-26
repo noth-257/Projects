@@ -7,7 +7,7 @@ import { useStore } from '../../store/useStore';
 import Tag from '../ui/Tag';
 import Button from '../ui/Button';
 import { formatDate } from '../../utils/helpers';
-import { renderWithHighlights, injectMarksIntoHTML } from '../../utils/renderWithHighlights';
+import { renderWithHighlights, injectMarksIntoHTML, stripHighlightMarks } from '../../utils/renderWithHighlights';
 import HighlightPopup from '../reader/HighlightPopup';
 import HighlightSidebar from '../reader/HighlightSidebar';
 import ConfirmModal from '../ui/ConfirmModal';
@@ -61,50 +61,32 @@ export default function ArticleReader() {
     toastTimerRef.current = setTimeout(() => setToast(''), 1200);
   }, []);
 
-  // Rendered HTML from markdown + highlights
+  // Base HTML: user's formatting (bold/italic) stored WITHOUT highlight marks.
+  // formattedContent is saved with marks stripped so it's pure formatting only.
+  const baseHTML = useMemo(() => {
+    if (!selectedArticle) return '';
+    if (selectedArticle.formattedContent) return selectedArticle.formattedContent;
+    // No saved formatting yet — render plain markdown
+    return renderWithHighlights(selectedArticle.content || '', [], {});
+  }, [selectedArticle?.id, selectedArticle?.content, selectedArticle?.formattedContent]);
+
+  // Final HTML = baseHTML with current highlight marks injected fresh.
+  // Recomputes whenever highlights change OR base changes.
   const renderedHTML = useMemo(() => {
     if (!selectedArticle) return '';
-    return renderWithHighlights(
-      selectedArticle.content || '',
-      highlights,
-      highlightColors,
-    );
-  }, [selectedArticle?.id, selectedArticle?.content, highlights, highlightColors]);
+    if (!highlights.length) return baseHTML;
+    return injectMarksIntoHTML(baseHTML, highlights, highlightColors);
+  }, [baseHTML, highlights, highlightColors]);
 
   // Apply HTML to DOM.
-  // renderedHTML always has the LATEST highlights (recomputed on every highlight change).
-  // formattedContent has user bold/italic BUT may have stale highlights.
-  // 
-  // Strategy: compare highlight IDs in formattedContent vs current highlights.
-  // If they match → formattedContent is up to date, use it (preserves bold/italic).
-  // If they differ → highlights changed, use renderedHTML (fresh marks, loses bold/italic).
-  // This guarantees highlights are ALWAYS visible immediately.
+  // renderedHTML = baseHTML (user formatting) + highlight marks injected fresh.
+  // Always use it — highlights are always current, formatting is always preserved.
   useEffect(() => {
     const el = contentRef.current;
     if (!el || popupActiveRef.current) return;
-
-    let htmlToShow = renderedHTML; // default: always has current highlights
-
-    if (selectedArticle?.formattedContent) {
-      const currentIds = new Set(highlights.map(h => String(h.id)));
-      const savedIds   = new Set(
-        [...(selectedArticle.formattedContent.matchAll(/data-highlight-id="(\d+)"/g))]
-          .map(m => m[1])
-      );
-      const sameIds = currentIds.size === savedIds.size &&
-        [...currentIds].every(id => savedIds.has(id));
-
-      if (sameIds) {
-        // formattedContent is in sync with current highlights → safe to use
-        // (preserves bold/italic user formatting)
-        htmlToShow = selectedArticle.formattedContent;
-      }
-      // else: highlights changed since last save → use renderedHTML so new marks show instantly
-    }
-
-    el.innerHTML = htmlToShow;
-    currentHTMLRef.current = htmlToShow;
-  }, [renderedHTML, selectedArticle?.formattedContent, highlights]);
+    el.innerHTML = renderedHTML;
+    currentHTMLRef.current = renderedHTML;
+  }, [renderedHTML]);
 
   // MutationObserver: keep currentHTMLRef in sync with any DOM changes
   // (execCommand bold/italic modifies the DOM directly)
@@ -118,16 +100,12 @@ export default function ArticleReader() {
         // Debounced auto-save: persist formatted HTML 1.5s after user stops typing
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = setTimeout(() => {
-          if (selectedArticle) {
-            // Bake current highlight marks INTO the formatted content before saving.
-            // This ensures formattedContent always has BOTH user formatting (bold/italic)
-            // AND highlight <mark> spans, so neither is lost on reload.
-            const htmlWithHighlights = injectMarksIntoHTML(
-              el.innerHTML,
-              highlights,
-              highlightColors,
-            );
-            saveFormattedContent(selectedArticle.id, htmlWithHighlights);
+          if (selectedArticle && el) {
+            // Strip highlight marks before saving so formattedContent
+            // stores ONLY user formatting (bold/italic/underline).
+            // Highlights are always re-injected at render time from the DB.
+            const stripped = stripHighlightMarks(el.innerHTML);
+            saveFormattedContent(selectedArticle.id, stripped);
           }
         }, 1500);
       }
@@ -271,21 +249,7 @@ export default function ArticleReader() {
       startOffset: savedPopup.startOffset,
       endOffset: savedPopup.endOffset,
     });
-    // Immediately save formattedContent with updated marks so the
-    // ID-comparison in the apply-HTML useEffect finds them in sync.
-    // We use a short delay so the store highlights array has updated first.
-    setTimeout(() => {
-      const el = contentRef.current;
-      if (el && selectedArticle) {
-        const fresh = injectMarksIntoHTML(
-          el.innerHTML,
-          useStore.getState().highlights,
-          useStore.getState().highlightColors,
-        );
-        saveFormattedContent(selectedArticle.id, fresh);
-      }
-    }, 50);
-  }, [popup, selectedArticle, createHighlight, closePopup, saveFormattedContent]);
+  }, [popup, selectedArticle, createHighlight, closePopup]);
 
   // Keyboard shortcuts
   useEffect(() => {
