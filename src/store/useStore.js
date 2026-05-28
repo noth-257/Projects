@@ -100,7 +100,9 @@ const useDataStore = create((set, get) => ({
   },
   updateArticle: async (id, data) => {
     const folderId = data.folderId ? Number(data.folderId) : null;
-    await db.articles.update(id, { ...data, folderId, updatedAt: new Date() });
+    // Clear formattedContent when markdown is edited via the editor modal,
+    // so reader always re-renders from the fresh markdown source.
+    await db.articles.update(id, { ...data, folderId, formattedContent: null, updatedAt: new Date() });
     await get().loadArticles();
     if (get().selectedArticle?.id === id) set({ selectedArticle: await db.articles.get(id) });
   },

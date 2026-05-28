@@ -8,6 +8,7 @@ import Tag from '../ui/Tag';
 import Button from '../ui/Button';
 import { formatDate } from '../../utils/helpers';
 import { renderWithHighlights, injectMarksIntoHTML, stripHighlightMarks } from '../../utils/renderWithHighlights';
+import { htmlToMarkdown } from '../../utils/htmlToMarkdown';
 import HighlightPopup from '../reader/HighlightPopup';
 import HighlightSidebar from '../reader/HighlightSidebar';
 import ConfirmModal from '../ui/ConfirmModal';
@@ -32,7 +33,7 @@ function Toast({ message }) {
 
 export default function ArticleReader() {
   const {
-    selectedArticle, setSelectedArticle, deleteArticle,
+    selectedArticle, setSelectedArticle, deleteArticle, updateArticle,
     getFolderById, openArticleModal, highlights, createHighlight, saveFormattedContent,
     highlightColors, sidebarCollapsed, dashboardVisible,
   } = useStore();
@@ -45,6 +46,7 @@ export default function ArticleReader() {
   const [fontSize, setFontSize]                     = useState(15);
   const [lastColor, setLastColor]                   = useState('yellow');
   const [toast, setToast]                           = useState('');
+  const [autoSaving, setAutoSaving]                 = useState(false);
 
   const contentRef     = useRef(null);
   const popupActiveRef = useRef(false);
@@ -99,13 +101,20 @@ export default function ArticleReader() {
         currentHTMLRef.current = el.innerHTML;
         // Debounced auto-save: persist formatted HTML 1.5s after user stops typing
         clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = setTimeout(() => {
+        saveTimerRef.current = setTimeout(async () => {
           if (selectedArticle && el) {
-            // Strip highlight marks before saving so formattedContent
-            // stores ONLY user formatting (bold/italic/underline).
-            // Highlights are always re-injected at render time from the DB.
+            setAutoSaving(true);
+            // 1. Strip highlight marks → save as formattedContent (pure formatting)
             const stripped = stripHighlightMarks(el.innerHTML);
-            saveFormattedContent(selectedArticle.id, stripped);
+            await saveFormattedContent(selectedArticle.id, stripped);
+            // 2. Convert HTML → markdown → save as content (keeps editor in sync)
+            const markdown = htmlToMarkdown(el.innerHTML);
+            await updateArticle(selectedArticle.id, {
+              ...selectedArticle,
+              content: markdown,
+              formattedContent: stripped, // prevent updateArticle from clearing it
+            });
+            setAutoSaving(false);
           }
         }, 1500);
       }
@@ -356,6 +365,12 @@ export default function ArticleReader() {
               <Highlighter size={13} />
               {highlights.length > 0 && <span>{highlights.length}</span>}
             </button>
+            {autoSaving && (
+              <span className="text-[10px] px-2 py-1 rounded-lg animate-pulse"
+                style={{ color: 'var(--text-muted,#64748b)', background: 'rgba(255,255,255,0.06)' }}>
+                Saving…
+              </span>
+            )}
             <Button variant="ghost" size="sm" icon={<Edit3 size={13} />}
               onClick={() => openArticleModal(selectedArticle)}>Edit</Button>
             <Button variant="danger" size="sm" icon={<Trash2 size={13} />}
